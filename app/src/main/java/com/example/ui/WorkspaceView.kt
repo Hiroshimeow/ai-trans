@@ -954,15 +954,25 @@ fun ChatPanel(viewModel: MainViewModel) {
                     fontWeight = FontWeight.Bold
                 )
                 selectedAttachments.forEach { attach ->
+                    val isAudio = attach.mimeType.startsWith("audio/", ignoreCase = true) ||
+                                  attach.displayName.endsWith(".mp3", ignoreCase = true) ||
+                                  attach.displayName.endsWith(".wav", ignoreCase = true)
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(BorderSlate)
+                            .clickable {
+                                if (isAudio) {
+                                    viewModel.transcribeAttachedFile(attach)
+                                }
+                            }
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            if (attach.mimeType.startsWith("image/")) Icons.Default.Image else Icons.Default.Description,
+                            if (attach.mimeType.startsWith("image/")) Icons.Default.Image 
+                            else if (isAudio) Icons.Default.Mic
+                            else Icons.Default.Description,
                             contentDescription = null,
                             tint = GlowCyan,
                             modifier = Modifier.size(10.dp)
@@ -977,12 +987,22 @@ fun ChatPanel(viewModel: MainViewModel) {
                             modifier = Modifier.widthIn(max = 100.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Selected",
-                            tint = ActiveGreen,
-                            modifier = Modifier.size(10.dp)
-                        )
+                        if (isAudio) {
+                            Text(
+                                "STT 🎙️",
+                                fontSize = 9.sp,
+                                color = GlowCyan,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 2.dp)
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Selected",
+                                tint = ActiveGreen,
+                                modifier = Modifier.size(10.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -1319,6 +1339,9 @@ fun AttachmentsTabContent(viewModel: MainViewModel) {
 fun AttachmentRow(item: AttachmentEntity, viewModel: MainViewModel) {
     val isInChat = item.status == "already_in_chat"
     val isSelected = item.status == "selected"
+    val isAudio = item.mimeType.startsWith("audio/", ignoreCase = true) ||
+                  item.displayName.endsWith(".mp3", ignoreCase = true) ||
+                  item.displayName.endsWith(".wav", ignoreCase = true)
 
     Row(
         modifier = Modifier
@@ -1342,6 +1365,20 @@ fun AttachmentRow(item: AttachmentEntity, viewModel: MainViewModel) {
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
+                )
+            } else if (isAudio) {
+                Icon(
+                    Icons.Default.Mic,
+                    contentDescription = null,
+                    tint = SoftOrange,
+                    modifier = Modifier.size(18.dp)
+                )
+            } else if (item.displayName.endsWith(".pdf", ignoreCase = true) || item.mimeType.equals("application/pdf", ignoreCase = true)) {
+                Icon(
+                    Icons.Default.PictureAsPdf,
+                    contentDescription = null,
+                    tint = CoralRed,
+                    modifier = Modifier.size(18.dp)
                 )
             } else {
                 Icon(
@@ -1373,6 +1410,21 @@ fun AttachmentRow(item: AttachmentEntity, viewModel: MainViewModel) {
         }
 
         Spacer(modifier = Modifier.width(4.dp))
+
+        if (isAudio) {
+            IconButton(
+                onClick = { viewModel.transcribeAttachedFile(item) },
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    Icons.Default.Mic,
+                    contentDescription = "Transcribe Audio",
+                    tint = GlowCyan,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+        }
 
         if (isInChat) {
             Box(
@@ -1790,6 +1842,8 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
     var useOnDeviceStt by remember { mutableStateOf(viewModel.settingsManager.useOnDeviceRecognizer) }
     var speechLang by remember { mutableStateOf(viewModel.settingsManager.speechLanguage) }
     var ttsLang by remember { mutableStateOf(viewModel.settingsManager.ttsLanguage) }
+    var ttsRateVal by remember { mutableStateOf(viewModel.settingsManager.ttsSpeechRate) }
+    var ttsPitchVal by remember { mutableStateOf(viewModel.settingsManager.ttsPitch) }
 
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2047,15 +2101,28 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color(0xFF1B1B1F), unfocusedTextColor = Color(0xFF1B1B1F))
                                 )
 
-                                Spacer(modifier = Modifier.height(6.dp))
-                                OutlinedTextField(
-                                    value = editMaxTokens,
-                                    onValueChange = { editMaxTokens = it },
-                                    label = { Text("Max Token Limits", fontSize = 10.sp) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textStyle = TextStyle(fontSize = 11.sp),
-                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color(0xFF1B1B1F), unfocusedTextColor = Color(0xFF1B1B1F))
-                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                val maxTokensFloat = editMaxTokens.toFloatOrNull() ?: 4096f
+                                val maxTokensCoerced = maxTokensFloat.coerceIn(1000f, 1000000f)
+                                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                                    Text(
+                                        text = "Max Token Limits: ${String.format(Locale.US, "%,d", maxTokensCoerced.toInt())}",
+                                        fontSize = 11.sp, 
+                                        fontWeight = FontWeight.Bold, 
+                                        color = SlateTextSecondary
+                                    )
+                                    Slider(
+                                        value = maxTokensCoerced,
+                                        onValueChange = { editMaxTokens = it.toInt().toString() },
+                                        valueRange = 1000f..1000000f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = GlowCyan,
+                                            activeTrackColor = GlowCyan,
+                                            inactiveTrackColor = BorderSlate
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
 
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
@@ -2228,7 +2295,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf("vi-VN" to "Vietnamese", "en-US" to "English").forEach { (code, name) ->
+                        listOf("vi-VN" to "Việt Nam", "en-US" to "English", "ja-JP" to "日本語").forEach { (code, name) ->
                             val isSelected = speechLang == code
                             Box(
                                 modifier = Modifier
@@ -2251,7 +2318,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("vi" to "Vietnamese", "en" to "English", "fr" to "French").forEach { (code, name) ->
+                    listOf("vi" to "Việt Nam", "en" to "English", "ja" to "日本語").forEach { (code, name) ->
                         val isSelected = ttsLang == code
                         Box(
                             modifier = Modifier
@@ -2266,6 +2333,52 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("TTS Speech Speed: ${"%.2f".format(ttsRateVal)}x", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                    TextButton(onClick = { ttsRateVal = 1.0f }) {
+                        Text("Reset", fontSize = 10.sp, color = ElectricBlue)
+                    }
+                }
+                Slider(
+                    value = ttsRateVal,
+                    onValueChange = { ttsRateVal = it },
+                    valueRange = 0.5f..2.5f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = ElectricBlue,
+                        activeTrackColor = ElectricBlue,
+                        inactiveTrackColor = BorderSlate
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("TTS Voice Pitch: ${"%.2f".format(ttsPitchVal)}x", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                    TextButton(onClick = { ttsPitchVal = 1.0f }) {
+                        Text("Reset", fontSize = 10.sp, color = ElectricBlue)
+                    }
+                }
+                Slider(
+                    value = ttsPitchVal,
+                    onValueChange = { ttsPitchVal = it },
+                    valueRange = 0.5f..2.0f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = ElectricBlue,
+                        activeTrackColor = ElectricBlue,
+                        inactiveTrackColor = BorderSlate
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -2300,6 +2413,8 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                             viewModel.settingsManager.useOnDeviceRecognizer = useOnDeviceStt
                             viewModel.settingsManager.speechLanguage = speechLang
                             viewModel.settingsManager.ttsLanguage = ttsLang
+                            viewModel.settingsManager.ttsSpeechRate = ttsRateVal
+                            viewModel.settingsManager.ttsPitch = ttsPitchVal
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = GlowCyan)

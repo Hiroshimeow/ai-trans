@@ -406,11 +406,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun speakMessageWithTts(text: String) {
-        ttsHelper.speak(text, settingsManager.ttsLanguage)
+        ttsHelper.speak(
+            text = text,
+            languageCode = settingsManager.ttsLanguage,
+            speechRate = settingsManager.ttsSpeechRate,
+            pitch = settingsManager.ttsPitch
+        )
     }
 
     fun stopSpeakingTts() {
         ttsHelper.stop()
+    }
+
+    fun transcribeAttachedFile(attachment: AttachmentEntity) {
+        val uriStr = attachment.uri
+        val name = attachment.displayName
+        isTranscribingAudio.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val uri = Uri.parse(uriStr)
+                val tempFile = File(context.cacheDir, "temp_transcribe_${System.currentTimeMillis()}_${name}")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                
+                if (!tempFile.exists() || tempFile.length() == 0L) {
+                    throw java.io.IOException("Could not resolve attachment content stream.")
+                }
+                
+                val transcript = repository.transcribeAudioFile(tempFile)
+                
+                launch(Dispatchers.Main) {
+                    if (transcript.isNotBlank()) {
+                        val currentText = composerText.value
+                        if (currentText.isEmpty()) {
+                            composerText.value = transcript
+                        } else {
+                            composerText.value = "$currentText\n$transcript"
+                        }
+                        android.widget.Toast.makeText(context, "Transcribed $name successfully!", android.widget.Toast.LENGTH_LONG).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "Transcription returned blank text.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+                
+                try {
+                    tempFile.delete()
+                } catch (e: Exception) {
+                    // ignore
+                }
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to transcribe attached file $name", e)
+                launch(Dispatchers.Main) {
+                    errorString.value = "Failed to transcribe $name: ${e.localizedMessage}"
+                }
+            } finally {
+                isTranscribingAudio.value = false
+            }
+        }
     }
 
     fun updateActiveSessionLlmConfig(endpointUrl: String, modelName: String, provider: String, apiKey: String, maxTokens: Int) {

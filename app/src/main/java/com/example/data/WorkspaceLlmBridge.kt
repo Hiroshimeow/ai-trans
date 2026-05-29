@@ -87,8 +87,9 @@ class WorkspaceLlmBridge(
                 if (base64Data != null) {
                     if (attach.mimeType.startsWith("image/")) {
                         currentUserParts.add(Part(inlineData = InlineData(mimeType = attach.mimeType, data = base64Data)))
-                    } else if (attach.mimeType.startsWith("text/")) {
-                        // For text files we can also embed them as inline context text
+                    } else if (isPdfAttachment(attach)) {
+                        currentUserParts.add(Part(inlineData = InlineData(mimeType = "application/pdf", data = base64Data)))
+                    } else if (isTextAttachment(attach)) {
                         val textContent = loadAttachmentText(attach)
                         if (textContent != null) {
                             currentUserParts.add(Part(text = "\n[Attached File: ${attach.displayName}]\n$textContent\n[End of File]\n"))
@@ -188,7 +189,14 @@ class WorkspaceLlmBridge(
                                 imageUrl = OpenAiImageUrl(url = base64Url)
                             )
                         )
-                    } else if (attach.mimeType.startsWith("text/")) {
+                    } else if (isPdfAttachment(attach)) {
+                        userContentParts.add(
+                            OpenAiContentPart(
+                                type = "text",
+                                text = "\n[Attached PDF: ${attach.displayName} - Native PDF analysis is fully supported natively using experimental Gemini models]\n"
+                            )
+                        )
+                    } else if (isTextAttachment(attach)) {
                         val textContent = loadAttachmentText(attach)
                         if (textContent != null) {
                             userContentParts.add(
@@ -252,12 +260,20 @@ class WorkspaceLlmBridge(
             throw IOException("Audio file is empty.")
         }
 
+        val detectedMimeType = if (audioFile.name.endsWith(".mp3", ignoreCase = true)) {
+            "audio/mp3"
+        } else if (audioFile.name.endsWith(".mp4", ignoreCase = true) || audioFile.name.endsWith(".m4a", ignoreCase = true)) {
+            "audio/mp4"
+        } else {
+            "audio/wav"
+        }
+
         val base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
         val request = GenerateContentRequest(
             contents = listOf(
                 Content(
                     parts = listOf(
-                        Part(inlineData = InlineData(mimeType = "audio/wav", data = base64Audio)),
+                        Part(inlineData = InlineData(mimeType = detectedMimeType, data = base64Audio)),
                         Part(text = promptText)
                     )
                 )
@@ -314,5 +330,19 @@ class WorkspaceLlmBridge(
             Log.e(tag, "Failed to load attachment text", e)
             null
         }
+    }
+
+    private fun isTextAttachment(attach: AttachmentEntity): Boolean {
+        val mime = attach.mimeType.lowercase()
+        if (mime.startsWith("text/")) return true
+        if (mime == "application/json" || mime == "application/xml" || mime == "application/javascript" || mime == "application/x-javascript") return true
+        val ext = attach.displayName.substringAfterLast('.', "").lowercase()
+        val textExts = listOf("txt", "md", "markdown", "json", "xml", "csv", "kt", "java", "py", "js", "ts", "html", "css", "yaml", "yml", "gradle")
+        return ext in textExts
+    }
+
+    private fun isPdfAttachment(attach: AttachmentEntity): Boolean {
+        if (attach.mimeType.equals("application/pdf", ignoreCase = true)) return true
+        return attach.displayName.endsWith(".pdf", ignoreCase = true)
     }
 }

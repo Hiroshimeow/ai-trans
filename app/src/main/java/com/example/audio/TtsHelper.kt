@@ -35,7 +35,7 @@ class TtsHelper(private val context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
-    fun speak(text: String, languageCode: String) {
+    fun speak(text: String, languageCode: String, speechRate: Float = 1.0f, pitch: Float = 1.0f) {
         val engine = tts
         if (engine == null) {
             Log.w("TtsHelper", "TTS instance is null")
@@ -50,16 +50,10 @@ class TtsHelper(private val context: Context) : TextToSpeech.OnInitListener {
 
         val locale = if (languageCode.startsWith("vi", ignoreCase = true)) {
             Locale("vi")
-        } else if (languageCode.startsWith("en", ignoreCase = true)) {
-            Locale.ENGLISH
-        } else if (languageCode.startsWith("fr", ignoreCase = true)) {
-            Locale.FRENCH
         } else if (languageCode.startsWith("ja", ignoreCase = true)) {
             Locale.JAPANESE
-        } else if (languageCode.startsWith("ko", ignoreCase = true)) {
-            Locale.KOREAN
         } else {
-            Locale(languageCode)
+            Locale.ENGLISH
         }
 
         try {
@@ -69,8 +63,11 @@ class TtsHelper(private val context: Context) : TextToSpeech.OnInitListener {
                 engine.setLanguage(Locale.getDefault())
             }
 
+            engine.setSpeechRate(speechRate)
+            engine.setPitch(pitch)
+
             engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ScreenChatTtsID")
-            Log.d("TtsHelper", "Speaking content in locale: $locale")
+            Log.d("TtsHelper", "Speaking content in locale: $locale with rate: $speechRate, pitch: $pitch")
         } catch (e: Exception) {
             Log.e("TtsHelper", "TTS speech execution error: ${e.message}")
         }

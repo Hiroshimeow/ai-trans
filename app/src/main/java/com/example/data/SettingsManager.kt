@@ -99,6 +99,14 @@ class SettingsManager(context: Context) {
         get() = prefs.getString("tts_language", "vi") ?: "vi"
         set(value) = prefs.edit().putString("tts_language", value).apply()
 
+    var ttsSpeechRate: Float
+        get() = prefs.getFloat("tts_speech_rate", 1.0f)
+        set(value) = prefs.edit().putFloat("tts_speech_rate", value).apply()
+
+    var ttsPitch: Float
+        get() = prefs.getFloat("tts_pitch", 1.0f)
+        set(value) = prefs.edit().putFloat("tts_pitch", value).apply()
+
     var useOnDeviceRecognizer: Boolean
         get() = prefs.getBoolean("use_on_device_recognizer", false)
         set(value) = prefs.edit().putBoolean("use_on_device_recognizer", value).apply()
