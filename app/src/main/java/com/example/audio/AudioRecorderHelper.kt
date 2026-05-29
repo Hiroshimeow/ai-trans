@@ -169,29 +169,30 @@ class AudioRecorderHelper(
                 onErrorListener?.invoke("Recording thread error: ${e.message}")
             }
         } finally {
-            try {
-                fos.close()
-            } catch (e: Exception) {
-                Log.e(tag, "Failed to close fos", e)
-            }
-            // Overwrite correct WAV header size details
-            writeWavHeaderDetails(file, totalBytesWritten)
-            copyToSharedMediaStore(file)
-
-            withContext(Dispatchers.Main) {
-                Log.d(tag, "Recording finished writing. Total audio payload bytes: $totalBytesWritten")
-                isRecording = false
-                audioRecord?.let {
-                    try {
-                        it.stop()
-                        it.release()
-                    } catch (e: Exception) {
-                        Log.e(tag, "AudioRecord clean stop failed", e)
-                    }
+            withContext(NonCancellable) {
+                try {
+                    fos.close()
+                } catch (e: Exception) {
+                    Log.e(tag, "Failed to close fos", e)
                 }
-                audioRecord = null
-                outputFile?.let { recordFile ->
-                    onAutoStoppedListener?.invoke(recordFile)
+                // Overwrite correct WAV header size details
+                writeWavHeaderDetails(file, totalBytesWritten)
+                copyToSharedMediaStore(file)
+
+                withContext(Dispatchers.Main) {
+                    Log.d(tag, "Recording finished writing. Total audio payload bytes: $totalBytesWritten")
+                    isRecording = false
+                    audioRecord?.let {
+                        try {
+                            it.stop()
+                            it.release()
+                        } catch (e: Exception) {
+                            Log.e(tag, "AudioRecord clean stop failed", e)
+                        }
+                    }
+                    audioRecord = null
+                    onAutoStoppedListener?.invoke(file)
+                    outputFile = null
                 }
             }
         }
@@ -201,11 +202,10 @@ class AudioRecorderHelper(
         if (!isRecording) {
             return null
         }
+        val fileTemp = outputFile
         isRecording = false
         recordJob?.cancel()
         recordJob = null
-        val fileTemp = outputFile
-        outputFile = null
         return fileTemp
     }
 

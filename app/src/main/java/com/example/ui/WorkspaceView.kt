@@ -606,6 +606,7 @@ fun ChatPanel(viewModel: MainViewModel) {
     val composerValue by viewModel.composerText.collectAsStateWithLifecycle()
 
     val isRecording by viewModel.isRecordingAudio.collectAsStateWithLifecycle()
+    val isVoiceQActive by viewModel.isRecordingVoiceQuestion.collectAsStateWithLifecycle()
     val isTranscribing by viewModel.isTranscribingAudio.collectAsStateWithLifecycle()
     val durationMs by viewModel.recordingDurationMs.collectAsStateWithLifecycle()
     val rms by viewModel.recordingRmsAmplitude.collectAsStateWithLifecycle()
@@ -617,6 +618,31 @@ fun ChatPanel(viewModel: MainViewModel) {
     var showSessionConfig by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val recordAudioGranted = permissions[android.Manifest.permission.RECORD_AUDIO] ?: false
+        if (!recordAudioGranted) {
+            android.widget.Toast.makeText(context, "Quyền ghi âm (Microphone) bị từ chối. Vui lòng cấp quyền trong Cài đặt hệ thống để tiếp tục.", android.widget.Toast.LENGTH_LONG).show()
+        } else {
+            viewModel.toggleAudioRecording()
+        }
+    }
+
+    val triggerRecordingSafely = {
+        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasMic) {
+            viewModel.toggleAudioRecording()
+        } else {
+            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO)
+            }
+            permissionLauncher.launch(perms)
+        }
+    }
+
     val pickMediaLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -771,7 +797,7 @@ fun ChatPanel(viewModel: MainViewModel) {
                                                         endpointUrl = session.endpointUrl ?: "",
                                                         modelName = m,
                                                         provider = "gemini",
-                                                        apiKey = session.apiKey ?: "",
+                                                        apiKey = session.getDecryptedApiKey() ?: "",
                                                         maxTokens = session.maxTokens ?: 4096
                                                     )
                                                 }
@@ -801,7 +827,7 @@ fun ChatPanel(viewModel: MainViewModel) {
                                                 endpointUrl = session.endpointUrl ?: "",
                                                 modelName = customModelInput,
                                                 provider = "gemini",
-                                                apiKey = session.apiKey ?: "",
+                                                apiKey = session.getDecryptedApiKey() ?: "",
                                                 maxTokens = session.maxTokens ?: 4096
                                             )
                                         },
@@ -870,7 +896,8 @@ fun ChatPanel(viewModel: MainViewModel) {
                             Column(modifier = Modifier.padding(8.dp)) {
                                 Text("Endpoint: ${session.endpointUrl.orEmpty().ifBlank { "NATIVE DEFAULT" }}", fontSize = 10.sp, color = SlateTextSecondary)
                                 Text("Max Tokens: ${session.maxTokens ?: 4096}", fontSize = 10.sp, color = SlateTextSecondary)
-                                val keyDisplay = if (session.apiKey.isNullOrBlank()) "None (Uses Default)" else "Keys Saved: sk-***" + session.apiKey.takeLast(4)
+                                val decryptedKey = session.getDecryptedApiKey()
+                                val keyDisplay = if (decryptedKey.isNullOrBlank()) "None (Uses Default)" else "Keys Saved: sk-***" + decryptedKey.takeLast(4)
                                 Text("API Key: $keyDisplay", fontSize = 10.sp, color = SlateTextSecondary)
                             }
                         }
@@ -1042,15 +1069,17 @@ fun ChatPanel(viewModel: MainViewModel) {
                                 .size(10.dp)
                                 .scale(if (isRecording) scale else 1f)
                                 .clip(CircleShape)
-                                .background(if (isRecording) CoralRed else SoftOrange)
+                                .background(if (isRecording) (if (isVoiceQActive) GlowCyan else CoralRed) else SoftOrange)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                if (isRecording) "Ghi âm Workspace Live..." else "STT Model Transcribing...",
+                                if (isVoiceQActive) "Hỏi bằng giọng nói (Voice Question)..."
+                                else if (isRecording) "Ghi âm Workspace Live..."
+                                else "STT Model Transcribing...",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isRecording) CoralRed else SoftOrange
+                                color = if (isVoiceQActive) GlowCyan else if (isRecording) CoralRed else SoftOrange
                             )
                             if (isRecording) {
                                 val seconds = durationMs / 1000
@@ -1066,12 +1095,18 @@ fun ChatPanel(viewModel: MainViewModel) {
 
                     if (isRecording) {
                         Button(
-                            onClick = { viewModel.toggleAudioRecording() },
-                            colors = ButtonDefaults.buttonColors(containerColor = CoralRed),
+                            onClick = { 
+                                if (isVoiceQActive) {
+                                    viewModel.toggleVoiceQuestionRecording()
+                                } else {
+                                    viewModel.toggleAudioRecording()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isVoiceQActive) GlowCyan else CoralRed),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             shape = RoundedCornerShape(4.dp)
                         ) {
-                            Text("STOP (STT)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("STOP", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (isVoiceQActive) CosmicDark else Color.White)
                         }
                     }
                 }
@@ -1107,10 +1142,10 @@ fun ChatPanel(viewModel: MainViewModel) {
             }
 
             IconButton(
-                onClick = { viewModel.toggleAudioRecording() },
+                onClick = { triggerRecordingSafely() },
                 modifier = Modifier
                     .drawBehind {
-                        if (isRecording) {
+                        if (isRecording && !isVoiceQActive) {
                             drawCircle(
                                 color = CoralRed.copy(alpha = 0.2f),
                                 radius = size.minDimension / 1.5f
@@ -1119,9 +1154,28 @@ fun ChatPanel(viewModel: MainViewModel) {
                     }
             ) {
                 Icon(
-                    imageVector = if (isRecording) Icons.Default.MicOff else Icons.Default.Mic,
+                    imageVector = if (isRecording && !isVoiceQActive) Icons.Default.MicOff else Icons.Default.Mic,
                     contentDescription = "VoiceCapture",
-                    tint = if (isRecording) CoralRed else Color(0xFF44474E)
+                    tint = if (isRecording && !isVoiceQActive) CoralRed else Color(0xFF44474E)
+                )
+            }
+
+            IconButton(
+                onClick = { viewModel.toggleVoiceQuestionRecording() },
+                modifier = Modifier
+                    .drawBehind {
+                        if (isRecording && isVoiceQActive) {
+                            drawCircle(
+                                color = GlowCyan.copy(alpha = 0.25f),
+                                radius = size.minDimension / 1.5f
+                            )
+                        }
+                    }
+            ) {
+                Icon(
+                    imageVector = if (isRecording && isVoiceQActive) Icons.Default.MicOff else Icons.Default.RecordVoiceOver,
+                    contentDescription = "Hỏi Giọng Nói (Voice Question)",
+                    tint = if (isRecording && isVoiceQActive) GlowCyan else Color(0xFF44474E)
                 )
             }
 
@@ -1881,6 +1935,30 @@ fun FloatSimulationView(viewModel: MainViewModel) {
     val ocrText by viewModel.floatOcrResult.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val recordAudioGranted = permissions[android.Manifest.permission.RECORD_AUDIO] ?: false
+        if (!recordAudioGranted) {
+            android.widget.Toast.makeText(context, "Quyền ghi âm (Microphone) bị từ chối. Vui lòng cấp quyền trong Cài đặt hệ thống để tiếp tục.", android.widget.Toast.LENGTH_LONG).show()
+        } else {
+            viewModel.toggleAudioRecording()
+        }
+    }
+
+    val triggerFloatRecordingSafely = {
+        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasMic) {
+            viewModel.toggleAudioRecording()
+        } else {
+            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO)
+            }
+            permissionLauncher.launch(perms)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1960,11 +2038,11 @@ fun FloatSimulationView(viewModel: MainViewModel) {
                                 radius = size.minDimension / 2 * micScaleLimit
                             )
                         }
-                        .clickable { viewModel.toggleAudioRecording() },
+                        .clickable { triggerFloatRecordingSafely() },
                     contentAlignment = Alignment.Center
                 ) {
                     IconButton(
-                        onClick = { viewModel.toggleAudioRecording() },
+                        onClick = { triggerFloatRecordingSafely() },
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
@@ -2011,69 +2089,24 @@ fun FloatSimulationView(viewModel: MainViewModel) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
                         onClick = {
-                            val tempFile = File(context.cacheDir, "simulated_screenshot.png")
-                            try {
-                                val bInput = context.assets.open("simulated_temp.png")
-                            } catch (e: Exception) {
-                                val bitmap = android.graphics.Bitmap.createBitmap(400, 300, android.graphics.Bitmap.Config.ARGB_8888)
-                                val canvas = android.graphics.Canvas(bitmap)
-                                canvas.drawColor(android.graphics.Color.DKGRAY)
-                                val paint = android.graphics.Paint().apply {
-                                    color = android.graphics.Color.CYAN
-                                    textSize = 20f
-                                    isAntiAlias = true
-                                }
-                                canvas.drawText("SCREEN SHOT SNAPSHOT", 40f, 150f, paint)
-                                FileOutputStream(tempFile).use { fos ->
-                                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 85, fos)
-                                }
-                            }
-                            viewModel.runSimulatedScreenOcr(
-                                simulatedText = "SYSTEM CONFIG STATUS: OK \nMEMORY USAGE: 64% \nPORT 8080: LISTENING",
-                                imageUri = Uri.fromFile(tempFile)
-                            )
+                            android.widget.Toast.makeText(context, "Chức năng Chụp màn hình (MediaProjection OCR) đang được bảo trì. Vui lòng hỏi bằng giọng nói hoặc nhập văn bản trực tiếp.", android.widget.Toast.LENGTH_LONG).show()
                         },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = BorderSlate),
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp), tint = SlateTextSecondary)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Simulate Snap", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Chụp màn hình (MediaProjection OCR)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
                     }
-
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.createSession("Snap Thread ${System.currentTimeMillis().toString().takeLast(4)}")
-                            val tempFile = File(context.cacheDir, "simulated_screenshot_new.png")
-                            val bitmap = android.graphics.Bitmap.createBitmap(400, 300, android.graphics.Bitmap.Config.ARGB_8888)
-                            val canvas = android.graphics.Canvas(bitmap)
-                            canvas.drawColor(android.graphics.Color.BLACK)
-                            val paint = android.graphics.Paint().apply {
-                                color = android.graphics.Color.GREEN
-                                textSize = 22f
-                            }
-                            canvas.drawText("NEW SCREEN CONTEXT", 40f, 150f, paint)
-                            FileOutputStream(tempFile).use { fos ->
-                                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 85, fos)
-                            }
-                            viewModel.runSimulatedScreenOcr(
-                                simulatedText = "NEW INTENT INITIALIZED... \nDATABASE_URL=jdbc:mysql://localhost:3306/db",
-                                imageUri = Uri.fromFile(tempFile)
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp),
-                        border = BorderStroke(1.dp, BorderSlate)
-                    ) {
-                        Icon(Icons.Default.FiberNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = GlowCyan)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("New Thread Snap", fontSize = 11.sp)
-                    }
+                }
                 }
 
                 if (ocrText != null) {
@@ -2145,6 +2178,8 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
     var ttsLang by remember { mutableStateOf(viewModel.settingsManager.ttsLanguage) }
     var ttsRateVal by remember { mutableStateOf(viewModel.settingsManager.ttsSpeechRate) }
     var ttsPitchVal by remember { mutableStateOf(viewModel.settingsManager.ttsPitch) }
+    var voiceQAutoSend by remember { mutableStateOf(viewModel.settingsManager.voiceQuestionAutoSend) }
+    var voiceQAutoPlayTts by remember { mutableStateOf(viewModel.settingsManager.voiceQuestionAutoPlayTts) }
 
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2836,6 +2871,39 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = BorderSlate)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text("Hỏi Bằng Giọng Nói (Voice Question)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GlowCyan)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Tự Động Gửi Tin Nhắn", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B1B1F))
+                        Text("Gửi ngay văn bản STT câu hỏi thô cho LLM", fontSize = 10.sp, color = SlateTextSecondary)
+                    }
+                    Switch(checked = voiceQAutoSend, onCheckedChange = { voiceQAutoSend = it }, colors = SwitchDefaults.colors(checkedThumbColor = GlowCyan))
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Tự Động Phát Âm Binh (TTS)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B1B1F))
+                        Text("Nói to câu trả lời của LLM ngay khi có phản hồi", fontSize = 10.sp, color = SlateTextSecondary)
+                    }
+                    Switch(checked = voiceQAutoPlayTts, onCheckedChange = { voiceQAutoPlayTts = it }, colors = SwitchDefaults.colors(checkedThumbColor = GlowCyan))
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
@@ -2871,6 +2939,8 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                             viewModel.settingsManager.ttsLanguage = ttsLang
                             viewModel.settingsManager.ttsSpeechRate = ttsRateVal
                             viewModel.settingsManager.ttsPitch = ttsPitchVal
+                            viewModel.settingsManager.voiceQuestionAutoSend = voiceQAutoSend
+                            viewModel.settingsManager.voiceQuestionAutoPlayTts = voiceQAutoPlayTts
 
                             // Save routing configuration
                             viewModel.settingsManager.routingStrategyRoundRobin = routeRoundRobin

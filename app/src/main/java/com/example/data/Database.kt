@@ -13,9 +13,14 @@ data class SessionEntity(
     val endpointUrl: String? = null,
     val modelName: String? = null,
     val apiProvider: String? = null, // provider ID or "gemini"
-    val apiKey: String? = null,
+    val apiKey: String? = null, // Encrypted securely via SecurityHelper
     val maxTokens: Int? = null
-)
+) {
+    fun getDecryptedApiKey(): String? {
+        val key = apiKey ?: return null
+        return SecurityHelper.decrypt(key)
+    }
+}
 
 @Entity(tableName = "messages")
 data class MessageEntity(
@@ -172,15 +177,112 @@ interface RecordingDao {
     suspend fun deleteRecordingById(id: String)
 }
 
+@Entity(tableName = "recording_sessions")
+data class RecordingSessionEntity(
+    @PrimaryKey val id: String,
+    val workspaceSessionId: String?,
+    val title: String,
+    val mode: String, // "quick_voice_note", "float_quick_ask", "live_transcribe", "meeting_record"
+    val audioPath: String?,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val durationMs: Long,
+    val status: String,
+    val stopReason: String?,
+    val providerId: String?,
+    val language: String,
+    val finalTranscript: String?,
+    val summary: String?,
+    val actionItemsJson: String?,
+    val errorCode: String?,
+    val errorMessage: String?
+)
+
+@Entity(tableName = "transcript_segments")
+data class TranscriptSegmentEntity(
+    @PrimaryKey val id: String,
+    val recordingSessionId: String,
+    val index: Int,
+    val startMs: Long?,
+    val endMs: Long?,
+    val text: String,
+    val isFinal: Boolean,
+    val speakerLabel: String?,
+    val language: String?,
+    val confidence: Float?,
+    val source: String,
+    val createdAt: Long
+)
+
+@Entity(tableName = "transcript_jobs")
+data class TranscriptJobEntity(
+    @PrimaryKey val id: String,
+    val recordingSessionId: String,
+    val type: String,
+    val status: String,
+    val providerId: String,
+    val model: String?,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val errorCode: String?,
+    val errorMessage: String?,
+    val metadataJson: String
+)
+
+@Dao
+interface RecordingSessionDao {
+    @Query("SELECT * FROM recording_sessions ORDER BY startedAt DESC")
+    fun getAllRecordingSessionsFlow(): Flow<List<RecordingSessionEntity>>
+
+    @Query("SELECT * FROM recording_sessions WHERE id = :id LIMIT 1")
+    suspend fun getRecordingSessionById(id: String): RecordingSessionEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecordingSession(session: RecordingSessionEntity)
+
+    @Update
+    suspend fun updateRecordingSession(session: RecordingSessionEntity)
+
+    @Query("DELETE FROM recording_sessions WHERE id = :id")
+    suspend fun deleteRecordingSessionById(id: String)
+}
+
+@Dao
+interface TranscriptSegmentDao {
+    @Query("SELECT * FROM transcript_segments WHERE recordingSessionId = :recordingSessionId ORDER BY `index` ASC")
+    fun getSegmentsForSessionFlow(recordingSessionId: String): Flow<List<TranscriptSegmentEntity>>
+
+    @Query("SELECT * FROM transcript_segments WHERE recordingSessionId = :recordingSessionId ORDER BY `index` ASC")
+    suspend fun getSegmentsForSessionSync(recordingSessionId: String): List<TranscriptSegmentEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSegments(segments: List<TranscriptSegmentEntity>)
+
+    @Query("DELETE FROM transcript_segments WHERE recordingSessionId = :recordingSessionId")
+    suspend fun deleteSegmentsBySessionId(recordingSessionId: String)
+}
+
+@Dao
+interface TranscriptJobDao {
+    @Query("SELECT * FROM transcript_jobs WHERE recordingSessionId = :recordingSessionId")
+    fun getJobsForSession(recordingSessionId: String): Flow<List<TranscriptJobEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertJob(job: TranscriptJobEntity)
+}
+
 @Database(
     entities = [
         SessionEntity::class,
         MessageEntity::class,
         AttachmentEntity::class,
         PromptSkillEntity::class,
-        RecordingEntity::class
+        RecordingEntity::class,
+        RecordingSessionEntity::class,
+        TranscriptSegmentEntity::class,
+        TranscriptJobEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(DatabaseConverters::class)
@@ -190,10 +292,73 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun attachmentDao(): AttachmentDao
     abstract fun promptSkillDao(): PromptSkillDao
     abstract fun recordingDao(): RecordingDao
+    abstract fun recordingSessionDao(): RecordingSessionDao
+    abstract fun transcriptSegmentDao(): TranscriptSegmentDao
+    abstract fun transcriptJobDao(): TranscriptJobDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `recording_sessions` (
+                        `id` TEXT NOT NULL, 
+                        `workspaceSessionId` TEXT, 
+                        `title` TEXT NOT NULL, 
+                        `mode` TEXT NOT NULL, 
+                        `audioPath` TEXT, 
+                        `startedAt` INTEGER NOT NULL, 
+                        `endedAt` INTEGER, 
+                        `durationMs` INTEGER NOT NULL, 
+                        `status` TEXT NOT NULL, 
+                        `stopReason` TEXT, 
+                        `providerId` TEXT, 
+                        `language` TEXT NOT NULL, 
+                        `finalTranscript` TEXT, 
+                        `summary` TEXT, 
+                        `actionItemsJson` TEXT, 
+                        `errorCode` TEXT, 
+                        `errorMessage` TEXT, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `transcript_segments` (
+                        `id` TEXT NOT NULL, 
+                        `recordingSessionId` TEXT NOT NULL, 
+                        `index` INTEGER NOT NULL, 
+                        `startMs` INTEGER, 
+                        `endMs` INTEGER, 
+                        `text` TEXT NOT NULL, 
+                        `isFinal` INTEGER NOT NULL, 
+                        `speakerLabel` TEXT, 
+                        `language` TEXT, 
+                        `confidence` REAL, 
+                        `source` TEXT NOT NULL, 
+                        `createdAt` INTEGER NOT NULL, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `transcript_jobs` (
+                        `id` TEXT NOT NULL, 
+                        `recordingSessionId` TEXT NOT NULL, 
+                        `type` TEXT NOT NULL, 
+                        `status` TEXT NOT NULL, 
+                        `providerId` TEXT NOT NULL, 
+                        `model` TEXT, 
+                        `startedAt` INTEGER NOT NULL, 
+                        `endedAt` INTEGER, 
+                        `errorCode` TEXT, 
+                        `errorMessage` TEXT, 
+                        `metadataJson` TEXT NOT NULL, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+            }
+        }
 
         fun getDatabase(context: android.content.Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -202,7 +367,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "screen_chat_workspace_db"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_3_4)
                 .build()
                 INSTANCE = instance
                 instance

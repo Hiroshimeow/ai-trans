@@ -120,7 +120,7 @@ class WorkspaceRepository(
             endpointUrl = endpoint,
             modelName = model,
             apiProvider = provider,
-            apiKey = apiKey,
+            apiKey = SecurityHelper.encrypt(apiKey),
             maxTokens = maxTokens
         )
         database.sessionDao().insertSession(session)
@@ -142,7 +142,7 @@ class WorkspaceRepository(
                     endpointUrl = endpointUrl,
                     modelName = modelName,
                     apiProvider = provider,
-                    apiKey = apiKey,
+                    apiKey = SecurityHelper.encrypt(apiKey),
                     maxTokens = maxTokens,
                     updatedAt = System.currentTimeMillis()
                 )
@@ -263,6 +263,7 @@ class WorkspaceRepository(
                     createdAt = System.currentTimeMillis()
                 )
             )
+            return@withContext responseText
         } catch (e: Exception) {
             Log.e(tag, "LLM invocation error after exhausting fallback paths", e)
             // 9. Update Assistant message to error status
@@ -274,6 +275,7 @@ class WorkspaceRepository(
                     createdAt = System.currentTimeMillis()
                 )
             )
+            throw e
         }
     }
 

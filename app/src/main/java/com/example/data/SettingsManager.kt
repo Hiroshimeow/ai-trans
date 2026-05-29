@@ -76,8 +76,8 @@ class SettingsManager(context: Context) {
         set(value) = prefs.edit().putString("custom_model_name", value).apply()
 
     var customApiKey: String
-        get() = prefs.getString("custom_api_key", "") ?: ""
-        set(value) = prefs.edit().putString("custom_api_key", value).apply()
+        get() = SecurityHelper.decrypt(prefs.getString("custom_api_key", ""))
+        set(value) = prefs.edit().putString("custom_api_key", SecurityHelper.encrypt(value)).apply()
 
     var preferredProvider: String
         get() = prefs.getString("preferred_provider", "gemini") ?: "gemini"
@@ -110,6 +110,14 @@ class SettingsManager(context: Context) {
     var useOnDeviceRecognizer: Boolean
         get() = prefs.getBoolean("use_on_device_recognizer", false)
         set(value) = prefs.edit().putBoolean("use_on_device_recognizer", value).apply()
+
+    var voiceQuestionAutoSend: Boolean
+        get() = prefs.getBoolean("voice_question_auto_send", true)
+        set(value) = prefs.edit().putBoolean("voice_question_auto_send", value).apply()
+
+    var voiceQuestionAutoPlayTts: Boolean
+        get() = prefs.getBoolean("voice_question_auto_play_tts", false)
+        set(value) = prefs.edit().putBoolean("voice_question_auto_play_tts", value).apply()
 
     var routingStrategyRoundRobin: Boolean
         get() = prefs.getBoolean("routing_strategy_round_robin", false)

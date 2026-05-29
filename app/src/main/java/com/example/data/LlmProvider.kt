@@ -16,7 +16,7 @@ data class LlmProvider(
         obj.put("id", id)
         obj.put("name", name)
         obj.put("endpointUrl", endpointUrl)
-        obj.put("apiKey", apiKey)
+        obj.put("apiKey", SecurityHelper.encrypt(apiKey))
         
         val modelsArr = JSONArray()
         models.forEach { modelsArr.put(it) }
@@ -31,7 +31,7 @@ data class LlmProvider(
             val id = obj.optString("id", "")
             val name = obj.optString("name", "")
             val endpointUrl = obj.optString("endpointUrl", "")
-            val apiKey = obj.optString("apiKey", "")
+            val apiKey = SecurityHelper.decrypt(obj.optString("apiKey", ""))
             
             val models = mutableListOf<String>()
             val modelsArr = obj.optJSONArray("models")

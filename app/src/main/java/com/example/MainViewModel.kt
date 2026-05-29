@@ -79,6 +79,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val liveMeetingTranscript = MutableStateFlow("")
     val polishedTranscript = MutableStateFlow("")
     val isMeetingActive = MutableStateFlow(false)
+    val isRecordingVoiceQuestion = MutableStateFlow(false)
     private var activeRecordingFile: File? = null
     val isPolishingTranscript = MutableStateFlow(false)
 
@@ -241,6 +242,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleVoiceQuestionRecording() {
+        if (isRecordingAudio.value) {
+            stopAudioRecording()
+        } else {
+            isRecordingVoiceQuestion.value = true
+            startAudioRecording()
+        }
+    }
+
     fun startMeetingRecording() {
         isMeetingActive.value = true
         liveMeetingTranscript.value = ""
@@ -259,6 +269,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         localSpeechHelper?.stopListening()
         localSpeechHelper = null
         isMeetingActive.value = false
+        isRecordingVoiceQuestion.value = false
         activeRecordingFile = null
         
         fileRecorded?.let {
@@ -277,8 +288,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activeAudioPlaybackPath.value = null
 
         val isMeeting = isMeetingActive.value
+        val isVoiceQ = isRecordingVoiceQuestion.value
         if (isMeeting) {
             recorderHelper.isSilenceDetectionEnabled = false
+        } else if (isVoiceQ) {
+            recorderHelper.isSilenceDetectionEnabled = true
+            recorderHelper.silenceThreshold = settingsManager.silenceThreshold
+            recorderHelper.maxSilenceSeconds = settingsManager.maxSilenceSeconds
         } else {
             recorderHelper.isSilenceDetectionEnabled = settingsManager.autoStopSilenceEnabled
             recorderHelper.silenceThreshold = settingsManager.silenceThreshold
@@ -354,6 +370,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun handleCompletedRecording(wavFile: File) {
+        val isVoiceQ = isRecordingVoiceQuestion.value
         recordingStatus.value = RecordingStatus.TRANSCRIBING
         isTranscribingAudio.value = true
         val isMeeting = isMeetingActive.value
@@ -382,7 +399,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 metadata = mapOf(
                     "duration" to durationSecs.toString(),
                     "date" to System.currentTimeMillis().toString(),
-                    "isMeeting" to isMeeting.toString()
+                    "isMeeting" to isMeeting.toString(),
+                    "isVoiceQuestion" to isVoiceQ.toString()
                 )
             )
             val dbPayloadValue = transcriptData.toJson()
@@ -390,7 +408,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.saveCompletedRecording(wavFile, durationSecs, dbPayloadValue)
 
             if (transcript.isNotBlank()) {
-                if (settingsManager.autoTranscribeAfterStop && !isMeeting) {
+                if (isVoiceQ) {
+                    if (settingsManager.voiceQuestionAutoSend) {
+                        sendVoiceQuestionMessage(transcript)
+                    } else {
+                        val currentText = composerText.value
+                        if (currentText.isEmpty()) {
+                            composerText.value = transcript
+                        } else {
+                            composerText.value = "$currentText\n$transcript"
+                        }
+                    }
+                } else if (settingsManager.autoTranscribeAfterStop && !isMeeting) {
                     val currentText = composerText.value
                     if (currentText.isEmpty()) {
                         composerText.value = transcript
@@ -407,6 +436,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } finally {
             isTranscribingAudio.value = false
             isMeetingActive.value = false
+            isRecordingVoiceQuestion.value = false
+        }
+    }
+
+    private suspend fun sendVoiceQuestionMessage(transcript: String) {
+        val sessionId = _activeSessionId.value ?: return
+        try {
+            val activeSkills = allSkills.value.filter { it.selected }
+            val systemPrompt = if (activeSkills.isNotEmpty()) {
+                activeSkills.joinToString("\n\n") { "--- ${it.title} ---\n${it.content}" }
+            } else {
+                ""
+            }
+
+            val responseText = repository.sendUserMessage(sessionId, transcript, systemPrompt)
+            if (settingsManager.voiceQuestionAutoPlayTts && responseText.isNotBlank()) {
+                speakMessageWithTts(responseText)
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Voice question background send error", e)
+            errorString.value = e.message ?: "Failed to transmit voice prompt."
         }
     }
 
