@@ -70,11 +70,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val errorString = MutableStateFlow<String?>(null)
 
     // Recording Runtime States
+    val recordingStatus = MutableStateFlow(RecordingStatus.IDLE)
     val isRecordingAudio = MutableStateFlow(false)
     val recordingDurationMs = MutableStateFlow(0L)
     val recordingRmsAmplitude = MutableStateFlow(0f)
     val isTranscribingAudio = MutableStateFlow(false)
     val recordAutoStoppedDueToSilence = MutableStateFlow(false)
+    val liveMeetingTranscript = MutableStateFlow("")
+    val polishedTranscript = MutableStateFlow("")
+    val isMeetingActive = MutableStateFlow(false)
+    private var activeRecordingFile: File? = null
+    val isPolishingTranscript = MutableStateFlow(false)
 
     // Audio Playback State
     val activeAudioPlaybackPath = MutableStateFlow<String?>(null)
@@ -235,43 +241,86 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun startMeetingRecording() {
+        isMeetingActive.value = true
+        liveMeetingTranscript.value = ""
+        startAudioRecording()
+    }
+
+    fun stopMeetingRecording() {
+        stopAudioRecording()
+    }
+
+    fun cancelAudioRecording() {
+        recordingStatus.value = RecordingStatus.SKIPPED
+        isRecordingAudio.value = false
+        val fileRecorded = activeRecordingFile
+        recorderHelper.stopRecording()
+        localSpeechHelper?.stopListening()
+        localSpeechHelper = null
+        isMeetingActive.value = false
+        activeRecordingFile = null
+        
+        fileRecorded?.let {
+            if (it.exists()) {
+                it.delete()
+            }
+            val txtFile = File(it.parentFile, it.nameWithoutExtension + ".txt")
+            if (txtFile.exists()) {
+                txtFile.delete()
+            }
+        }
+    }
+
     private fun startAudioRecording() {
-        // Disables active playbacks
         playerHelper.stopAudio()
         activeAudioPlaybackPath.value = null
 
-        // Apply updated thresholds
-        recorderHelper.isSilenceDetectionEnabled = settingsManager.autoStopSilenceEnabled
-        recorderHelper.silenceThreshold = settingsManager.silenceThreshold
-        recorderHelper.maxSilenceSeconds = settingsManager.maxSilenceSeconds
+        val isMeeting = isMeetingActive.value
+        if (isMeeting) {
+            recorderHelper.isSilenceDetectionEnabled = false
+        } else {
+            recorderHelper.isSilenceDetectionEnabled = settingsManager.autoStopSilenceEnabled
+            recorderHelper.silenceThreshold = settingsManager.silenceThreshold
+            recorderHelper.maxSilenceSeconds = settingsManager.maxSilenceSeconds
+        }
 
         recordAutoStoppedDueToSilence.value = false
         val fileRecorded = recorderHelper.startRecording()
         if (fileRecorded != null) {
+            activeRecordingFile = fileRecorded
+            recordingStatus.value = RecordingStatus.RECORDING
             isRecordingAudio.value = true
             liveSpeechResult.value = ""
 
-            // Configure local Speech Recognition if configured
-            if (settingsManager.useOnDeviceRecognizer) {
+            val useOnDevice = settingsManager.useOnDeviceRecognizer || isMeeting
+            if (useOnDevice) {
                 localSpeechHelper = OnDeviceSpeechHelper(context,
                     onResult = { result ->
                         liveSpeechResult.value = result
+                        if (isMeetingActive.value) {
+                            liveMeetingTranscript.value = result
+                        }
                         Log.d(tag, "Local continuous transcript update: $result")
+                        saveLiveTranscriptToDisk(result)
                     },
                     onError = { err ->
                         Log.e(tag, "Local SpeechRecognizer error: $err")
+                        if (err.contains("timeout", ignoreCase = true)) {
+                            recordingStatus.value = RecordingStatus.TIMEOUT
+                        } else {
+                            recordingStatus.value = RecordingStatus.ERROR
+                        }
                     }
                 )
                 localSpeechHelper?.startListening(settingsManager.speechLanguage)
             }
 
-            // Launch polling job for visualizer progress inside views
             viewModelScope.launch {
                 while (isRecordingAudio.value && recorderHelper.isRecording) {
                     recordingDurationMs.value = recorderHelper.durationMs
                     recordingRmsAmplitude.value = recorderHelper.currentRms
 
-                    // Check if helper auto-stopped itself due to voice-silence duration
                     if (!recorderHelper.isRecording) {
                         recordAutoStoppedDueToSilence.value = true
                         isRecordingAudio.value = false
@@ -284,35 +333,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun stopAudioRecording() {
+        recordingStatus.value = RecordingStatus.STOPPING
         isRecordingAudio.value = false
         recorderHelper.stopRecording()
         localSpeechHelper?.stopListening()
         localSpeechHelper = null
     }
 
-    private suspend fun handleCompletedRecording(wavFile: File) {
-        isTranscribingAudio.value = true
-        try {
-            val durationSecs = wavFile.length() / (16000.0 * 2.0) // Estimate for WAV 16kHz Mono PCM16
-            Log.d(tag, "Recording finished -> File: ${wavFile.name}, calculated duration: $durationSecs s")
+    private fun saveLiveTranscriptToDisk(text: String) {
+        val file = activeRecordingFile ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val txtFile = File(file.parentFile, file.nameWithoutExtension + ".txt")
+                txtFile.writeText(text)
+                Log.d(tag, "Safely flushed live transcript to disk: ${txtFile.name} (${text.length} chars)")
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to write live transcript to disk", e)
+            }
+        }
+    }
 
-            val useLocal = settingsManager.useOnDeviceRecognizer
-            val localText = liveSpeechResult.value
+    private suspend fun handleCompletedRecording(wavFile: File) {
+        recordingStatus.value = RecordingStatus.TRANSCRIBING
+        isTranscribingAudio.value = true
+        val isMeeting = isMeetingActive.value
+        try {
+            val durationSecs = wavFile.length() / (16000.0 * 2.0)
+            Log.d(tag, "Recording completed -> File: ${wavFile.name}, duration: $durationSecs s")
+
+            val useLocal = settingsManager.useOnDeviceRecognizer || isMeeting
+            val localText = if (isMeeting) liveMeetingTranscript.value else liveSpeechResult.value
 
             val transcript = if (useLocal && localText.isNotBlank()) {
-                Log.d(tag, "Applying local on-device transcript: $localText")
+                Log.d(tag, "Using local on-device transcript: $localText")
                 localText
             } else {
                 repository.transcribeAudioFile(wavFile)
             }
-            Log.d(tag, "Audio STT completed -> Transcript: $transcript")
+            Log.d(tag, "STT completed -> Transcript: $transcript")
 
-            // Persist recording to the history panel
-            repository.saveCompletedRecording(wavFile, durationSecs, transcript)
+            val txtFile = File(wavFile.parentFile, wavFile.nameWithoutExtension + ".txt")
+            txtFile.writeText(transcript)
+
+            val segments = listOf(TranscriptSegment(transcript, 0L))
+            val transcriptData = TranscriptData(
+                segments = segments,
+                source = if (useLocal && localText.isNotBlank()) "OnDevice" else "Gemini",
+                metadata = mapOf(
+                    "duration" to durationSecs.toString(),
+                    "date" to System.currentTimeMillis().toString(),
+                    "isMeeting" to isMeeting.toString()
+                )
+            )
+            val dbPayloadValue = transcriptData.toJson()
+
+            repository.saveCompletedRecording(wavFile, durationSecs, dbPayloadValue)
 
             if (transcript.isNotBlank()) {
-                // If auto-transcribe-insert is active
-                if (settingsManager.autoTranscribeAfterStop) {
+                if (settingsManager.autoTranscribeAfterStop && !isMeeting) {
                     val currentText = composerText.value
                     if (currentText.isEmpty()) {
                         composerText.value = transcript
@@ -321,11 +399,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+            recordingStatus.value = RecordingStatus.COMPLETED
         } catch (e: Exception) {
             Log.e(tag, "Failed to transcribe recorded audio", e)
+            recordingStatus.value = RecordingStatus.ERROR
             errorString.value = e.message ?: "Failed audio transcription."
         } finally {
             isTranscribingAudio.value = false
+            isMeetingActive.value = false
+        }
+    }
+
+    fun polishTranscript(recording: RecordingEntity) {
+        if (isPolishingTranscript.value) return
+        isPolishingTranscript.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val wavFile = File(recording.audioPath)
+                val rawSTT = if (recording.transcript.isNotBlank()) {
+                    val parsed = TranscriptData.fromJson(recording.transcript)
+                    parsed.segments.joinToString("\n") { it.text }
+                } else {
+                    ""
+                }
+
+                val txtFile = File(wavFile.parentFile, wavFile.nameWithoutExtension + ".txt")
+                val textToUse = if (txtFile.exists()) {
+                    txtFile.readText()
+                } else {
+                    rawSTT
+                }
+
+                Log.d(tag, "Polishing transcript for recording: ${recording.id}, file: ${wavFile.name}")
+                val polishedText = repository.polishAudioAndTxt(wavFile, textToUse)
+
+                txtFile.writeText(polishedText)
+
+                val updatedSegments = listOf(TranscriptSegment(polishedText, 0L))
+                val updatedData = TranscriptData(
+                    segments = updatedSegments,
+                    source = "Gemini-Polished",
+                    metadata = mapOf(
+                        "duration" to recording.durationSeconds.toString(),
+                        "date" to recording.createdAt.toString(),
+                        "polishedAt" to System.currentTimeMillis().toString()
+                    )
+                )
+
+                val updatedEntity = recording.copy(
+                    transcript = updatedData.toJson()
+                )
+                database.recordingDao().insertRecording(updatedEntity)
+
+                launch(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Hoàn thành hiệu đính AI thành công!", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to polish transcript", e)
+                launch(Dispatchers.Main) {
+                    errorString.value = "Chuyển đổi/Hiệu đính thất bại: ${e.localizedMessage}"
+                }
+            } finally {
+                isPolishingTranscript.value = false
+            }
         }
     }
 
@@ -360,11 +496,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun insertTranscriptIntoComposer(transcript: String) {
+        val parsed = TranscriptData.fromJson(transcript)
+        val plainText = parsed.segments.joinToString("\n") { it.text }
         val currentText = composerText.value
         if (currentText.isEmpty()) {
-            composerText.value = transcript
+            composerText.value = plainText
         } else {
-            composerText.value = "$currentText $transcript"
+            composerText.value = "$currentText\n$plainText"
         }
     }
 
@@ -481,5 +619,91 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         playerHelper.stopAudio()
         ttsHelper.shutdown()
         localSpeechHelper?.stopListening()
+    }
+}
+
+enum class RecordingStatus {
+    IDLE,
+    RECORDING,
+    STOPPING,
+    TRANSCRIBING,
+    COMPLETED,
+    SKIPPED,
+    ERROR,
+    TIMEOUT
+}
+
+data class TranscriptSegment(
+    val text: String,
+    val timestampMs: Long
+)
+
+data class TranscriptData(
+    val segments: List<TranscriptSegment>,
+    val source: String,
+    val metadata: Map<String, String> = emptyMap()
+) {
+    fun toJson(): String {
+        val root = org.json.JSONObject()
+        root.put("source", source)
+        val meta = org.json.JSONObject()
+        metadata.forEach { (k, v) -> meta.put(k, v) }
+        root.put("metadata", meta)
+        
+        val segsArray = org.json.JSONArray()
+        segments.forEach { seg ->
+            val segObj = org.json.JSONObject()
+            segObj.put("text", seg.text)
+            segObj.put("timestampMs", seg.timestampMs)
+            segsArray.put(segObj)
+        }
+        root.put("segments", segsArray)
+        return root.toString()
+    }
+
+    companion object {
+        fun fromJson(jsonStr: String): TranscriptData {
+            val trimmed = jsonStr.trim()
+            if (!trimmed.startsWith("{")) {
+                return TranscriptData(
+                    segments = listOf(TranscriptSegment(jsonStr, 0L)),
+                    source = "Legacy",
+                    metadata = emptyMap()
+                )
+            }
+            try {
+                val root = org.json.JSONObject(jsonStr)
+                val source = root.optString("source", "Unknown")
+                
+                val metaMap = mutableMapOf<String, String>()
+                val metaObj = root.optJSONObject("metadata")
+                metaObj?.let {
+                    val keys = it.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        metaMap[key] = it.optString(key)
+                    }
+                }
+                
+                val segsList = mutableListOf<TranscriptSegment>()
+                val segsArray = root.optJSONArray("segments")
+                if (segsArray != null) {
+                    for (i in 0 until segsArray.length()) {
+                        val obj = segsArray.getJSONObject(i)
+                        segsList.add(
+                            TranscriptSegment(
+                                text = obj.getString("text"),
+                                timestampMs = obj.getLong("timestampMs")
+                            )
+                        )
+                    }
+                } else {
+                    segsList.add(TranscriptSegment(root.optString("text", ""), 0L))
+                }
+                return TranscriptData(segsList, source, metaMap)
+            } catch (e: Exception) {
+                return TranscriptData(listOf(TranscriptSegment(jsonStr, 0L)), "Error-Fallback")
+            }
+        }
     }
 }

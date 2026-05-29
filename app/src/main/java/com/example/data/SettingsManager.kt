@@ -110,4 +110,20 @@ class SettingsManager(context: Context) {
     var useOnDeviceRecognizer: Boolean
         get() = prefs.getBoolean("use_on_device_recognizer", false)
         set(value) = prefs.edit().putBoolean("use_on_device_recognizer", value).apply()
+
+    var routingStrategyRoundRobin: Boolean
+        get() = prefs.getBoolean("routing_strategy_round_robin", false)
+        set(value) = prefs.edit().putBoolean("routing_strategy_round_robin", value).apply()
+
+    var routingStrategyStickyLimit: Int
+        get() = prefs.getInt("routing_strategy_sticky_limit", 1)
+        set(value) = prefs.edit().putInt("routing_strategy_sticky_limit", value).apply()
+
+    var routingStrategyComboRoundRobin: Boolean
+        get() = prefs.getBoolean("routing_strategy_combo_round_robin", false)
+        set(value) = prefs.edit().putBoolean("routing_strategy_combo_round_robin", value).apply()
+
+    var routingStrategyComboStickyLimit: Int
+        get() = prefs.getInt("routing_strategy_combo_sticky_limit", 1)
+        set(value) = prefs.edit().putInt("routing_strategy_combo_sticky_limit", value).apply()
 }

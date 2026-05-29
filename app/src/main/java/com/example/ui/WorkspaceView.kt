@@ -39,6 +39,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.MainViewModel
+import com.example.RecordingStatus
+import com.example.TranscriptData
+import com.example.TranscriptSegment
 import com.example.data.AttachmentEntity
 import com.example.data.MessageEntity
 import com.example.data.RecordingEntity
@@ -1293,6 +1296,11 @@ fun DetailsPanel(viewModel: MainViewModel) {
                 onClick = { activeTabIdx = 1 },
                 text = { Text("Record Library", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             )
+            Tab(
+                selected = activeTabIdx == 2,
+                onClick = { activeTabIdx = 2 },
+                text = { Text("Meeting 🎙️", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            )
         }
 
         Box(
@@ -1300,10 +1308,262 @@ fun DetailsPanel(viewModel: MainViewModel) {
                 .weight(1f)
                 .padding(10.dp)
         ) {
-            if (activeTabIdx == 0) {
-                AttachmentsTabContent(viewModel = viewModel)
+            when (activeTabIdx) {
+                0 -> AttachmentsTabContent(viewModel = viewModel)
+                1 -> RecordingsTabContent(viewModel = viewModel)
+                2 -> MeetingTabContent(viewModel = viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun MeetingTabContent(viewModel: MainViewModel) {
+    val status by viewModel.recordingStatus.collectAsStateWithLifecycle()
+    val isRecording by viewModel.isRecordingAudio.collectAsStateWithLifecycle()
+    val durationMs by viewModel.recordingDurationMs.collectAsStateWithLifecycle()
+    val rms by viewModel.recordingRmsAmplitude.collectAsStateWithLifecycle()
+    val liveTranscript by viewModel.liveMeetingTranscript.collectAsStateWithLifecycle()
+
+    val scrollState = rememberScrollState()
+    LaunchedEffect(liveTranscript) {
+        scrollState.animateScrollTo(scrollState.maxValue)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SurfaceSlate),
+            border = BorderStroke(1.dp, BorderSlate)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        "Workspace Meeting Sync",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "Thời lượng: %.1fs".format(Locale.US, durationMs / 1000f),
+                        fontSize = 10.sp,
+                        color = SlateTextSecondary
+                    )
+                }
+
+                val badgeColor = when (status) {
+                    RecordingStatus.IDLE -> Color(0xFF74777F)
+                    RecordingStatus.RECORDING -> CoralRed
+                    RecordingStatus.STOPPING -> SoftOrange
+                    RecordingStatus.TRANSCRIBING -> GlowCyan
+                    RecordingStatus.COMPLETED -> ActiveGreen
+                    RecordingStatus.SKIPPED -> Color(0xFF8E9199)
+                    RecordingStatus.ERROR -> Color(0xFFBA1A1A)
+                    RecordingStatus.TIMEOUT -> Color(0xFFFFB4AB)
+                }
+                val statusLabel = when (status) {
+                    RecordingStatus.IDLE -> "Sẵn sàng"
+                    RecordingStatus.RECORDING -> "Đang ghi âm cuộc họp"
+                    RecordingStatus.STOPPING -> "Đang dừng"
+                    RecordingStatus.TRANSCRIBING -> "Đang STT bằng AI..."
+                    RecordingStatus.COMPLETED -> "Đã hoàn thành"
+                    RecordingStatus.SKIPPED -> "Đã hủy bỏ"
+                    RecordingStatus.ERROR -> "Lỗi hệ thống"
+                    RecordingStatus.TIMEOUT -> "Quá thời gian"
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(badgeColor.copy(alpha = 0.2f))
+                        .border(1.dp, badgeColor, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        statusLabel,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = badgeColor
+                    )
+                }
+            }
+        }
+
+        if (isRecording) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.2f))
+                    .border(1.dp, BorderSlate, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val barCount = 15
+                    for (i in 0 until barCount) {
+                        val baseHeight = 3.dp
+                        val factor = (rms * 120).coerceIn(1f, 32f)
+                        val noise = remember(rms) { (4..16).random() }
+                        val activeHeight = if (i % 2 == 0) baseHeight + factor.dp else baseHeight + (factor / 2).dp + noise.dp
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(activeHeight.coerceAtMost(30.dp))
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(GlowCyan)
+                        )
+                    }
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.3f))
+                .border(1.dp, BorderSlate, RoundedCornerShape(8.dp))
+                .padding(10.dp)
+        ) {
+            if (liveTranscript.isBlank()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Notes,
+                            contentDescription = null,
+                            tint = BorderSlate,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "Chưa có nội dung cuộc họp.\nHãy bắt đầu ghi âm để chuyển ngữ thô live.",
+                            fontSize = 11.sp,
+                            color = SlateTextSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
             } else {
-                RecordingsTabContent(viewModel = viewModel)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(scrollState)
+                    ) {
+                        Text(
+                            text = liveTranscript,
+                            fontSize = 12.sp,
+                            color = Color.White,
+                            lineHeight = 18.sp
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        IconButton(
+                            onClick = { viewModel.insertTranscriptIntoComposer(liveTranscript) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Input,
+                                contentDescription = "InsertToComposer",
+                                tint = GlowCyan,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(GlowCyan.copy(alpha = 0.05f))
+                .border(1.dp, BorderSlate, RoundedCornerShape(8.dp))
+                .padding(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    Icons.Default.Security,
+                    contentDescription = null,
+                    tint = GlowCyan,
+                    modifier = Modifier
+                        .size(14.dp)
+                        .padding(top = 1.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    "Cuộc họp được lưu đồng thời xuống file .wav và .txt trong bộ nhớ cache liên tục của Workspace. Nếu có sự cố tắt máy hoặc crash bất ngờ, dữ liệu văn bản họp vẫn đầy đủ.",
+                    fontSize = 10.sp,
+                    color = SlateTextSecondary,
+                    lineHeight = 14.sp
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (!isRecording) {
+                Button(
+                    onClick = { viewModel.startMeetingRecording() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = ActiveGreen),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("BẮT ĐẦU HỌP 🎙️", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            } else {
+                Button(
+                    onClick = { viewModel.stopMeetingRecording() },
+                    modifier = Modifier.weight(1.5f),
+                    colors = ButtonDefaults.buttonColors(containerColor = CoralRed),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Stop, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("HOÀN THÀNH HỌP ⏹️", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                OutlinedButton(
+                    onClick = { viewModel.cancelAudioRecording() },
+                    modifier = Modifier.weight(1f),
+                    border = BorderStroke(1.dp, CoralRed),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CoralRed)
+                ) {
+                    Text("HỦY ❌", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -1544,22 +1804,63 @@ fun RecordingsTabContent(viewModel: MainViewModel) {
                         }
                     }
 
-                    if (rec.transcript.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                    val parsedData = remember(rec.transcript) { TranscriptData.fromJson(rec.transcript) }
+                    val displaySTT = remember(parsedData) { parsedData.segments.joinToString("\n") { it.text } }
+                    val sourceStr = remember(parsedData) { parsedData.source }
+                    val isPolishing by viewModel.isPolishingTranscript.collectAsStateWithLifecycle()
+
+                    if (displaySTT.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(BorderSlate.copy(alpha = 0.5f))
-                                .padding(4.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(BorderSlate.copy(alpha = 0.3f))
+                                .padding(8.dp)
                         ) {
-                            Text(
-                                "Transcript: ${rec.transcript}",
-                                fontSize = 10.sp,
-                                color = SlateTextSecondary,
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val badgeBg = if (sourceStr == "Gemini-Polished") ActiveGreen.copy(alpha = 0.2f) else GlowCyan.copy(alpha = 0.2f)
+                                    val badgeText = if (sourceStr == "Gemini-Polished") ActiveGreen else GlowCyan
+                                    val sourceLabel = if (sourceStr == "Gemini-Polished") "AI Polished ✨" else "STT Thô 🎙️"
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(badgeBg)
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(sourceLabel, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = badgeText)
+                                    }
+
+                                    Button(
+                                        onClick = { viewModel.polishTranscript(rec) },
+                                        enabled = !isPolishing,
+                                        colors = ButtonDefaults.buttonColors(containerColor = GlowCyan),
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                        shape = RoundedCornerShape(4.dp),
+                                        modifier = Modifier.height(18.dp)
+                                    ) {
+                                        if (isPolishing) {
+                                            CircularProgressIndicator(modifier = Modifier.size(8.dp), color = Color.White, strokeWidth = 1.dp)
+                                        } else {
+                                            Text("Hiệu Đính AI 🌌", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    displaySTT,
+                                    fontSize = 11.sp,
+                                    color = SlateTextSecondary,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
@@ -1854,6 +2155,11 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
     var activeProviderId by remember {
         mutableStateOf(viewModel.settingsManager.activeProviderId)
     }
+
+    var routeRoundRobin by remember { mutableStateOf(viewModel.settingsManager.routingStrategyRoundRobin) }
+    var routeStickyLimit by remember { mutableStateOf(viewModel.settingsManager.routingStrategyStickyLimit) }
+    var routeComboRoundRobin by remember { mutableStateOf(viewModel.settingsManager.routingStrategyComboRoundRobin) }
+    var routeComboStickyLimit by remember { mutableStateOf(viewModel.settingsManager.routingStrategyComboStickyLimit) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -2276,6 +2582,156 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 HorizontalDivider(color = BorderSlate)
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Routing Strategy Section
+                Text("🌐 LLM Routing Strategy", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = GlowCyan)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E24)),
+                    border = BorderStroke(1.dp, BorderSlate)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        // 1. Round Robin
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Round Robin Strategy", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Cycle through accounts systematically for queries", fontSize = 9.sp, color = SlateTextSecondary)
+                            }
+                            Switch(
+                                checked = routeRoundRobin,
+                                onCheckedChange = { 
+                                    routeRoundRobin = it
+                                    if (it) {
+                                        // Disable combo round robin if standard round robin enables (mutually exclusive)
+                                        routeComboRoundRobin = false
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(checkedThumbColor = GlowCyan)
+                            )
+                        }
+
+                        if (routeRoundRobin) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Sticky Query Limit", fontSize = 11.sp, color = SlateTextSecondary)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = { routeStickyLimit = (routeStickyLimit - 1).coerceAtLeast(1) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Text("-", color = GlowCyan, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+                                    Text(
+                                        text = "$routeStickyLimit",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    )
+                                    IconButton(
+                                        onClick = { routeStickyLimit = (routeStickyLimit + 1).coerceAtMost(50) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Text("+", color = GlowCyan, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(color = BorderSlate.copy(alpha = 0.4f))
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // 2. Combo Round Robin
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Combo Round Robin", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Cycle over Account-Model pairs instead of provider-only selection", fontSize = 9.sp, color = SlateTextSecondary)
+                            }
+                            Switch(
+                                checked = routeComboRoundRobin,
+                                onCheckedChange = { 
+                                    routeComboRoundRobin = it
+                                    if (it) {
+                                        // Disable standard round robin if combo enables
+                                        routeRoundRobin = false
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(checkedThumbColor = GlowCyan)
+                            )
+                        }
+
+                        if (routeComboRoundRobin) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Combo Sticky Limit", fontSize = 11.sp, color = SlateTextSecondary)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = { routeComboStickyLimit = (routeComboStickyLimit - 1).coerceAtLeast(1) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Text("-", color = GlowCyan, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+                                    Text(
+                                        text = "$routeComboStickyLimit",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    )
+                                    IconButton(
+                                        onClick = { routeComboStickyLimit = (routeComboStickyLimit + 1).coerceAtMost(50) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Text("+", color = GlowCyan, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                val routingDescription = when {
+                    routeComboRoundRobin -> {
+                        "Active Route: Combo Round-Robin (sticky limit $routeComboStickyLimit queries before rotation)."
+                    }
+                    routeRoundRobin -> {
+                        "Active Route: Multi-Account Round-Robin (sticky limit $routeStickyLimit queries before rotation)."
+                    }
+                    else -> {
+                        "Active Route: Single Client Sticky. Using selected provider '$activeProviderId' exclusively."
+                    }
+                }
+                Text(
+                    text = routingDescription,
+                    fontSize = 10.sp,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                    color = SlateTextSecondary,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = BorderSlate)
+                Spacer(modifier = Modifier.height(10.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2415,6 +2871,16 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                             viewModel.settingsManager.ttsLanguage = ttsLang
                             viewModel.settingsManager.ttsSpeechRate = ttsRateVal
                             viewModel.settingsManager.ttsPitch = ttsPitchVal
+
+                            // Save routing configuration
+                            viewModel.settingsManager.routingStrategyRoundRobin = routeRoundRobin
+                            viewModel.settingsManager.routingStrategyStickyLimit = routeStickyLimit
+                            viewModel.settingsManager.routingStrategyComboRoundRobin = routeComboRoundRobin
+                            viewModel.settingsManager.routingStrategyComboStickyLimit = routeComboStickyLimit
+
+                            // Clear existing stale cooldowns since configuration just updated
+                            com.example.data.LlmRouteSelector.clearAllCooldowns()
+
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = GlowCyan)

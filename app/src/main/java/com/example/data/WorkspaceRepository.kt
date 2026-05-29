@@ -216,19 +216,43 @@ class WorkspaceRepository(
             val history = database.messageDao().getMessagesForSession(sessionId).firstOrNull() ?: emptyList()
             val chatHistory = history.filter { it.id != userMsgId && it.id != assistantMsgId }
 
-            // 7. Fire API call to LLM
-            val session = database.sessionDao().getSessionById(sessionId)
-            val responseText = bridge.submitMessage(
-                chatHistory = chatHistory,
-                userMessage = userMsg,
-                systemPrompt = systemPrompt,
-                attachments = selectedAttachments,
-                sessionEndpointUrl = session?.endpointUrl,
-                sessionModelName = session?.modelName,
-                sessionApiProvider = session?.apiProvider,
-                sessionApiKey = session?.apiKey,
-                sessionMaxTokens = session?.maxTokens
-            )
+            // 7. Fire API call to LLM with Route-selector Retry Loop
+            var responseText = ""
+            var lastError: Exception? = null
+            val maxAttempts = 3
+            
+            for (attempt in 1..maxAttempts) {
+                // Determine route dynamically based on active routing rules & cooldown status
+                val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager)
+                Log.d(tag, "LLM Route attempt $attempt/$maxAttempts via routing selector: ${route.routingLog}")
+                
+                try {
+                    responseText = bridge.submitMessage(
+                        chatHistory = chatHistory,
+                        userMessage = userMsg,
+                        systemPrompt = systemPrompt,
+                        attachments = selectedAttachments,
+                        sessionEndpointUrl = route.provider.endpointUrl,
+                        sessionModelName = route.selectedModel,
+                        sessionApiProvider = route.provider.id,
+                        sessionApiKey = route.provider.apiKey,
+                        sessionMaxTokens = route.provider.maxTokens
+                    )
+                    // Success! Log and break from retry loop
+                    Log.d(tag, "LLM Route execution succeeded on attempt $attempt with provider: ${route.provider.id}")
+                    lastError = null
+                    break
+                } catch (e: Exception) {
+                    Log.e(tag, "LLM Route invocation failed on attempt $attempt with provider ${route.provider.id}: ${e.message}")
+                    lastError = e
+                    // Place this provider in 60s cooldown to prevent repeated near-instant failures
+                    com.example.data.LlmRouteSelector.reportFailure(route.provider.id)
+                }
+            }
+
+            if (lastError != null) {
+                throw lastError
+            }
 
             // 8. Update Assistant message with success response
             database.messageDao().insertMessage(
@@ -240,11 +264,11 @@ class WorkspaceRepository(
                 )
             )
         } catch (e: Exception) {
-            Log.e(tag, "LLM invocation error: ${e.message}", e)
+            Log.e(tag, "LLM invocation error after exhausting fallback paths", e)
             // 9. Update Assistant message to error status
             database.messageDao().insertMessage(
                 pendingMsg.copy(
-                    content = "Error calling Gemini API: ${e.message}",
+                    content = "Error calling LLM APIs: ${e.message}",
                     isPending = false,
                     isError = true,
                     createdAt = System.currentTimeMillis()
@@ -337,5 +361,9 @@ class WorkspaceRepository(
 
     suspend fun transcribeAudioFile(audioFile: java.io.File): String {
         return bridge.transcribeAudio(audioFile)
+    }
+
+    suspend fun polishAudioAndTxt(audioFile: java.io.File, rawSTT: String): String {
+        return bridge.polishAudioAndTxt(audioFile, rawSTT)
     }
 }

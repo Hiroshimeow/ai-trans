@@ -345,4 +345,72 @@ class WorkspaceLlmBridge(
         if (attach.mimeType.equals("application/pdf", ignoreCase = true)) return true
         return attach.displayName.endsWith(".pdf", ignoreCase = true)
     }
+
+    /**
+     * Multimodal LLM transcription refinement combining .wav and raw STT text.
+     */
+    suspend fun polishAudioAndTxt(audioFile: File, rawSTT: String): String = withContext(Dispatchers.IO) {
+        val apiKey = getApiKey()
+        val polishModel = settingsManager.sttModel.ifBlank { "gemini-3.5-flash" }
+
+        val detectedMimeType = if (audioFile.name.endsWith(".mp3", ignoreCase = true)) {
+            "audio/mp3"
+        } else if (audioFile.name.endsWith(".mp4", ignoreCase = true) || audioFile.name.endsWith(".m4a", ignoreCase = true)) {
+            "audio/mp4"
+        } else {
+            "audio/wav"
+        }
+
+        val promptText = """
+Bạn là Trợ lý AI chuyên nghiệp về hiệu đính và tối ưu hóa tài liệu/biên bản cuộc họp.
+Dưới đây là một file âm thanh ghi âm cuộc họp, đi kèm với nội dung chuyển ngữ thô (raw STT) được ghi lại theo thời gian thực trên thiết bị.
+Hãy kết hợp cả hai nguồn thông tin này để hiệu chỉnh chính tả, sửa các từ sai ngữ nghĩa do âm sắc địa phương hoặc nhiễu tạp âm, thêm dấu câu, chia đoạn và định dạng thành một Biên bản họp hoàn chỉnh đầy đủ, rõ ràng và mượt mà bằng tiếng Việt.
+
+NỘI DUNG CHUYỂN NGỮ THÔ (RAW STT):
+$rawSTT
+"""
+
+        val parts = mutableListOf<Part>()
+        if (audioFile.exists() && audioFile.length() > 0L) {
+            try {
+                val audioBytes = audioFile.readBytes()
+                val base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
+                parts.add(Part(inlineData = InlineData(mimeType = detectedMimeType, data = base64Audio)))
+            } catch (e: Exception) {
+                Log.w(tag, "Could not load audio file bytes for polishing multimodal context: ${e.message}")
+            }
+        }
+        parts.add(Part(text = promptText))
+
+        val request = GenerateContentRequest(
+            contents = listOf(
+                Content(parts = parts)
+            ),
+            generationConfig = GenerationConfig(temperature = 0.2f)
+        )
+
+        Log.d(tag, "Routing multimodal Polish request to model: $polishModel")
+        try {
+            val response = GeminiRetrofitClient.service.generateContent(polishModel, apiKey, request)
+            val result = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            if (!result.isNullOrBlank()) {
+                return@withContext result.trim()
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Multimodal polish failed: ${e.message}. Attempting text-only fallback...")
+        }
+
+        val textFallbackRequest = GenerateContentRequest(
+            contents = listOf(
+                Content(parts = listOf(Part(text = promptText)))
+            ),
+            generationConfig = GenerationConfig(temperature = 0.2f)
+        )
+        val response = GeminiRetrofitClient.service.generateContent(polishModel, apiKey, textFallbackRequest)
+        val result = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+        if (!result.isNullOrBlank()) {
+            return@withContext result.trim()
+        }
+        throw IOException("Polishing failed. No feedback from Gemini service.")
+    }
 }
