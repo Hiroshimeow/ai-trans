@@ -1,0 +1,6 @@
+{
+  "name": "Screen Chat Workspace",
+  "description": "Unified screen chat workspace for meetings, quick screenshots, live transcription, and custom prompt skills.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
