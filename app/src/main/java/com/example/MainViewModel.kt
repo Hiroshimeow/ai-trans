@@ -405,7 +405,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val dbPayloadValue = transcriptData.toJson()
 
-            repository.saveCompletedRecording(wavFile, durationSecs, dbPayloadValue)
+            repository.saveCompletedRecording(wavFile, durationSecs, dbPayloadValue, isMeeting = isMeeting, isVoiceQuestion = isVoiceQ)
 
             if (transcript.isNotBlank()) {
                 if (isVoiceQ) {

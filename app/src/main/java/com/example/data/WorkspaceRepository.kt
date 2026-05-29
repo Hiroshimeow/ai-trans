@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.TranscriptData
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -339,17 +340,69 @@ class WorkspaceRepository(
     }
 
     // --- Recordings Management ---
-    suspend fun saveCompletedRecording(audioFile: File, durationSeconds: Double, transcript: String) = withContext(Dispatchers.IO) {
+    suspend fun saveCompletedRecording(audioFile: File, durationSeconds: Double, transcriptJson: String, isMeeting: Boolean = false, isVoiceQuestion: Boolean = false) = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val recording = RecordingEntity(
             id = id,
             audioPath = audioFile.absolutePath,
             durationSeconds = durationSeconds,
-            transcript = transcript,
+            transcript = transcriptJson,
             createdAt = System.currentTimeMillis(),
             error = null
         )
         database.recordingDao().insertRecording(recording)
+
+        // Parse raw text for structured recording session insertion
+        val plainText = try {
+            val parsed = TranscriptData.fromJson(transcriptJson)
+            parsed.segments.joinToString("\n") { seg -> seg.text }
+        } catch (e: Exception) {
+            transcriptJson
+        }
+
+        // Populate new RecordingSessionEntity for modern tracking as requested by the architecture verdict
+        val mode = when {
+            isMeeting -> "meeting_record"
+            isVoiceQuestion -> "quick_voice_note"
+            else -> "float_quick_ask"
+        }
+        val sessionEntity = RecordingSessionEntity(
+            id = id,
+            workspaceSessionId = null,
+            title = if (isMeeting) "Họp ngày ${java.text.SimpleDateFormat("dd/MM HH:mm").format(java.util.Date())}" else "Ghi âm ngày ${java.text.SimpleDateFormat("dd/MM HH:mm").format(java.util.Date())}",
+            mode = mode,
+            audioPath = audioFile.absolutePath,
+            startedAt = System.currentTimeMillis() - (durationSeconds * 1000).toLong(),
+            endedAt = System.currentTimeMillis(),
+            durationMs = (durationSeconds * 1000).toLong(),
+            status = "completed",
+            stopReason = "manual",
+            providerId = "gemini",
+            language = "vi",
+            finalTranscript = plainText,
+            summary = null,
+            actionItemsJson = null,
+            errorCode = null,
+            errorMessage = null
+        )
+        database.recordingSessionDao().insertRecordingSession(sessionEntity)
+
+        // Populate TranscriptSegmentEntity for raw transcript segment persistence
+        val segment = TranscriptSegmentEntity(
+            id = UUID.randomUUID().toString(),
+            recordingSessionId = id,
+            index = 0,
+            startMs = 0L,
+            endMs = (durationSeconds * 1000).toLong(),
+            text = plainText,
+            isFinal = true,
+            speakerLabel = "Speaker 0",
+            language = "vi",
+            confidence = 1.0f,
+            source = if (isVoiceQuestion) "continuous_speech" else "standalone",
+            createdAt = System.currentTimeMillis()
+        )
+        database.transcriptSegmentDao().insertSegments(listOf(segment))
     }
 
     suspend fun deleteRecording(id: String, fileToDelete: File?) = withContext(Dispatchers.IO) {

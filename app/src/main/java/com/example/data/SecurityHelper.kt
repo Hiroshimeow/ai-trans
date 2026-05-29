@@ -39,7 +39,7 @@ object SecurityHelper {
 
     fun encrypt(plainText: String?): String {
         if (plainText.isNullOrEmpty()) return ""
-        return try {
+        try {
             val cipher = Cipher.getInstance(AES_MODE_GCM)
             cipher.init(Cipher.ENCRYPT_MODE, appKey)
             val iv = cipher.iv
@@ -47,9 +47,10 @@ object SecurityHelper {
             
             val ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP)
             val encryptedBase64 = Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
-            "$ivBase64:$encryptedBase64"
+            return "$ivBase64:$encryptedBase64"
         } catch (e: Exception) {
-            plainText
+            android.util.Log.e("SecurityHelper", "Encryption failed, cannot fallback to plaintext", e)
+            throw SecurityException("Encryption failed completely. API key cannot be saved in plaintext for security.", e)
         }
     }
 
@@ -57,9 +58,10 @@ object SecurityHelper {
         if (cipherText.isNullOrEmpty()) return ""
         val parts = cipherText.split(":")
         if (parts.size != 2) {
-            return cipherText
+            android.util.Log.w("SecurityHelper", "Key is not in encrypted GCM format. Denying access.")
+            return ""
         }
-        return try {
+        try {
             val iv = Base64.decode(parts[0], Base64.NO_WRAP)
             val encryptedBytes = Base64.decode(parts[1], Base64.NO_WRAP)
             
@@ -67,9 +69,10 @@ object SecurityHelper {
             val spec = GCMParameterSpec(128, iv)
             cipher.init(Cipher.DECRYPT_MODE, appKey, spec)
             val decryptedBytes = cipher.doFinal(encryptedBytes)
-            String(decryptedBytes, Charsets.UTF_8)
+            return String(decryptedBytes, Charsets.UTF_8)
         } catch (e: Exception) {
-            cipherText
+            android.util.Log.e("SecurityHelper", "Decryption failed, denying raw leak", e)
+            return ""
         }
     }
 }

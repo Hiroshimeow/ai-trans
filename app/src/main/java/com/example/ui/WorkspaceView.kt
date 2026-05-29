@@ -106,6 +106,69 @@ fun WorkspaceMainView(viewModel: MainViewModel) {
     var showAddSkillDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    var pendingRecordAction by remember { mutableStateOf<String?>(null) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val recordAudioGranted = permissions[android.Manifest.permission.RECORD_AUDIO] ?: false
+        if (!recordAudioGranted) {
+            android.widget.Toast.makeText(context, "Quyền ghi âm (Microphone) bị từ chối. Vui lòng cấp quyền trong Cài đặt hệ thống để tiếp tục.", android.widget.Toast.LENGTH_LONG).show()
+        } else {
+            when (pendingRecordAction) {
+                "voice_question" -> viewModel.toggleVoiceQuestionRecording()
+                "meeting" -> viewModel.startMeetingRecording()
+                else -> viewModel.toggleAudioRecording()
+            }
+        }
+        pendingRecordAction = null
+    }
+
+    val triggerRecordingSafely = {
+        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasMic) {
+            viewModel.toggleAudioRecording()
+        } else {
+            pendingRecordAction = "normal"
+            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO)
+            }
+            permissionLauncher.launch(perms)
+        }
+    }
+
+    val triggerVoiceQuestionSafely = {
+        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasMic) {
+            viewModel.toggleVoiceQuestionRecording()
+        } else {
+            pendingRecordAction = "voice_question"
+            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO)
+            }
+            permissionLauncher.launch(perms)
+        }
+    }
+
+    val triggerMeetingSafely = {
+        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasMic) {
+            viewModel.startMeetingRecording()
+        } else {
+            pendingRecordAction = "meeting"
+            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                arrayOf(android.Manifest.permission.RECORD_AUDIO)
+            }
+            permissionLauncher.launch(perms)
+        }
+    }
+
     val activeSessionId by viewModel.activeSessionId.collectAsStateWithLifecycle()
     val sessions by viewModel.allSessions.collectAsStateWithLifecycle()
 
@@ -150,7 +213,10 @@ fun WorkspaceMainView(viewModel: MainViewModel) {
                 showSettingsDialog = { showSettingsDialog = true },
                 showMobileMenuDrawer = { showMobileMenuDrawer = true },
                 showMobileDetailsSheet = { showMobileDetailsSheet = true },
-                viewModel = viewModel
+                viewModel = viewModel,
+                triggerRecordingSafely = triggerRecordingSafely,
+                triggerVoiceQuestionSafely = triggerVoiceQuestionSafely,
+                triggerMeetingSafely = triggerMeetingSafely
             )
         }
     } else {
@@ -160,7 +226,10 @@ fun WorkspaceMainView(viewModel: MainViewModel) {
             showSettingsDialog = { showSettingsDialog = true },
             showMobileMenuDrawer = {},
             showMobileDetailsSheet = {},
-            viewModel = viewModel
+            viewModel = viewModel,
+            triggerRecordingSafely = triggerRecordingSafely,
+            triggerVoiceQuestionSafely = triggerVoiceQuestionSafely,
+            triggerMeetingSafely = triggerMeetingSafely
         )
     }
 
@@ -194,7 +263,7 @@ fun WorkspaceMainView(viewModel: MainViewModel) {
                     .fillMaxHeight(0.85f)
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                DetailsPanel(viewModel = viewModel)
+                DetailsPanel(viewModel = viewModel, onStartMeetingClick = triggerMeetingSafely)
             }
         }
     }
@@ -208,7 +277,10 @@ fun MainScaffoldContent(
     showSettingsDialog: () -> Unit,
     showMobileMenuDrawer: () -> Unit,
     showMobileDetailsSheet: () -> Unit,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    triggerRecordingSafely: () -> Unit,
+    triggerVoiceQuestionSafely: () -> Unit,
+    triggerMeetingSafely: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -286,7 +358,11 @@ fun MainScaffoldContent(
                     .weight(1f)
                     .fillMaxHeight()
             ) {
-                ChatPanel(viewModel = viewModel)
+                ChatPanel(
+                    viewModel = viewModel,
+                    triggerRecordingSafely = triggerRecordingSafely,
+                    triggerVoiceQuestionSafely = triggerVoiceQuestionSafely
+                )
             }
 
             if (isWideScreen) {
@@ -297,7 +373,7 @@ fun MainScaffoldContent(
                         .background(MaterialTheme.colorScheme.surface)
                         .border(1.dp, BorderSlate)
                 ) {
-                    DetailsPanel(viewModel = viewModel)
+                    DetailsPanel(viewModel = viewModel, onStartMeetingClick = triggerMeetingSafely)
                 }
             }
         }
@@ -600,7 +676,11 @@ fun SidebarPanel(
 // 2. CENTER CHAT PANEL
 // ==========================================
 @Composable
-fun ChatPanel(viewModel: MainViewModel) {
+fun ChatPanel(
+    viewModel: MainViewModel,
+    triggerRecordingSafely: () -> Unit,
+    triggerVoiceQuestionSafely: () -> Unit
+) {
     val messages by viewModel.activeSessionMessages.collectAsStateWithLifecycle()
     val attachments by viewModel.activeSessionAttachments.collectAsStateWithLifecycle()
     val composerValue by viewModel.composerText.collectAsStateWithLifecycle()
@@ -618,30 +698,6 @@ fun ChatPanel(viewModel: MainViewModel) {
     var showSessionConfig by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val recordAudioGranted = permissions[android.Manifest.permission.RECORD_AUDIO] ?: false
-        if (!recordAudioGranted) {
-            android.widget.Toast.makeText(context, "Quyền ghi âm (Microphone) bị từ chối. Vui lòng cấp quyền trong Cài đặt hệ thống để tiếp tục.", android.widget.Toast.LENGTH_LONG).show()
-        } else {
-            viewModel.toggleAudioRecording()
-        }
-    }
-
-    val triggerRecordingSafely = {
-        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (hasMic) {
-            viewModel.toggleAudioRecording()
-        } else {
-            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO)
-            }
-            permissionLauncher.launch(perms)
-        }
-    }
 
     val pickMediaLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -1161,7 +1217,7 @@ fun ChatPanel(viewModel: MainViewModel) {
             }
 
             IconButton(
-                onClick = { viewModel.toggleVoiceQuestionRecording() },
+                onClick = { triggerVoiceQuestionSafely() },
                 modifier = Modifier
                     .drawBehind {
                         if (isRecording && isVoiceQActive) {
@@ -1325,7 +1381,7 @@ fun ChatBubble(
 // 3. RIGHT DETAILS PANEL UI
 // ==========================================
 @Composable
-fun DetailsPanel(viewModel: MainViewModel) {
+fun DetailsPanel(viewModel: MainViewModel, onStartMeetingClick: () -> Unit) {
     var activeTabIdx by remember { mutableIntStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1365,14 +1421,14 @@ fun DetailsPanel(viewModel: MainViewModel) {
             when (activeTabIdx) {
                 0 -> AttachmentsTabContent(viewModel = viewModel)
                 1 -> RecordingsTabContent(viewModel = viewModel)
-                2 -> MeetingTabContent(viewModel = viewModel)
+                2 -> MeetingTabContent(viewModel = viewModel, onStartMeetingClick = onStartMeetingClick)
             }
         }
     }
 }
 
 @Composable
-fun MeetingTabContent(viewModel: MainViewModel) {
+fun MeetingTabContent(viewModel: MainViewModel, onStartMeetingClick: () -> Unit) {
     val status by viewModel.recordingStatus.collectAsStateWithLifecycle()
     val isRecording by viewModel.isRecordingAudio.collectAsStateWithLifecycle()
     val durationMs by viewModel.recordingDurationMs.collectAsStateWithLifecycle()
@@ -1588,7 +1644,7 @@ fun MeetingTabContent(viewModel: MainViewModel) {
         ) {
             if (!isRecording) {
                 Button(
-                    onClick = { viewModel.startMeetingRecording() },
+                    onClick = { onStartMeetingClick() },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = ActiveGreen),
                     shape = RoundedCornerShape(10.dp)
