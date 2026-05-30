@@ -193,7 +193,7 @@ class WorkspaceLlmBridge(
                         userContentParts.add(
                             OpenAiContentPart(
                                 type = "text",
-                                text = "\n[Attached PDF: ${attach.displayName} - Native PDF analysis is fully supported natively using experimental Gemini models]\n"
+                                text = "\n[Attached PDF: ${attach.displayName} - Note: This provider may not support native PDF ingestion without extraction]\n"
                             )
                         )
                     } else if (isTextAttachment(attach)) {
@@ -214,7 +214,7 @@ class WorkspaceLlmBridge(
         requestMessages.add(OpenAiMessage(role = "user", content = userContentParts))
 
         val request = OpenAiChatRequest(
-            model = modelName.ifBlank { "gpt-4o" },
+            model = modelName,
             messages = requestMessages,
             temperature = 0.4f,
             maxTokens = maxTokens

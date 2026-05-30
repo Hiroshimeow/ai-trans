@@ -9,8 +9,8 @@ Screen Chat Workspace is a high-performance Android application engineered to un
 This application utilizes Clean Architecture principles layered with Jetpack Compose, the Room Database, Kotlin Coroutines, and StateFlow structures.
 
 ### A. In-app Floating HUD Mode
-* **Ambient Floating Microphone**: Enables micro-capturing, fast Speech-To-Text translation on on-screen targets, and quick-reply execution.
-* **Adaptive Integration**: Serves as a quick-launch utility. Toggling between standard workspace panes and overlay systems preserves full session states.
+* **Quick Microphone Capture**: Enables fast voice-to-text input and quick-reply execution through a simplified in-app panel.
+* **Adaptive Integration**: Serves as a quick-launch utility within the app. Toggling between standard workspace panes and the voice HUD preserves full session states.
 
 ### B. Screen Chat Workspace Core
 * **Context Storage**: Fully managed Room SQLite persistence layer storing historical sessions, structured multi-role chat history, media attachments, and custom prompt templates.
