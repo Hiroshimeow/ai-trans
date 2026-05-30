@@ -37,6 +37,6 @@ data class CoreChatRequest(
 interface LlmAdapter {
     val capabilities: ProviderCapabilities
     suspend fun sendChat(request: CoreChatRequest): String
-    suspend fun transcribeAudio(audioBytes: ByteArray, promptText: String): String
-    suspend fun polishAudioAndTxt(audioBytes: ByteArray?, rawSTT: String): String
+    suspend fun transcribeAudio(audioBytes: ByteArray, promptText: String, model: String): String
+    suspend fun polishAudioAndTxt(audioBytes: ByteArray?, rawSTT: String, model: String): String
 }

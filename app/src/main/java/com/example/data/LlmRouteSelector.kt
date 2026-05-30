@@ -104,7 +104,7 @@ object LlmRouteSelector {
             val defaultGeminiObj = defaultProviders.first { it.id == "gemini" }
             return ResolvedRoute(
                 provider = defaultGeminiObj,
-                selectedModel = if (defaultGeminiObj.models.isNotEmpty()) defaultGeminiObj.models.first() else "gemini-2.5-flash",
+                selectedModel = if (defaultGeminiObj.models.isNotEmpty()) defaultGeminiObj.models.first() else "",
                 routingLog = "No active API keys found. Defaulting to native Gemini provider."
             )
         }
@@ -116,7 +116,7 @@ object LlmRouteSelector {
             // Distribute across Combo models: each provider's models expanded as independent endpoints
             val comboList = mutableListOf<ComboModel>()
             validatedProviders.forEach { p ->
-                val endpointModels = p.models.ifEmpty { listOf("gemini-2.5-flash") }
+                val endpointModels = p.models.ifEmpty { listOf("") }
                 endpointModels.forEach { m ->
                     comboList.add(ComboModel(p, m))
                 }
@@ -124,7 +124,7 @@ object LlmRouteSelector {
 
             if (comboList.isEmpty()) {
                 val defaultGeminiObj = defaultProviders.first { it.id == "gemini" }
-                return ResolvedRoute(defaultGeminiObj, "gemini-2.5-flash", "Combo list empty")
+                return ResolvedRoute(defaultGeminiObj, "", "Combo list empty")
             }
 
             // Filter out combos whose provider is currently in cooldown
@@ -172,7 +172,7 @@ object LlmRouteSelector {
                 // Force reset cooldown for the first provider if all are dead of cooldown
                 val firstAnyProvider = validatedProviders.first()
                 cooldownMap.remove(firstAnyProvider.id)
-                val selModel = if (firstAnyProvider.models.isNotEmpty()) firstAnyProvider.models.first() else "gemini-2.5-flash"
+                val selModel = if (firstAnyProvider.models.isNotEmpty()) firstAnyProvider.models.first() else ""
                 return ResolvedRoute(
                     provider = firstAnyProvider,
                     selectedModel = selModel,
@@ -194,7 +194,7 @@ object LlmRouteSelector {
                 currentProviderCallCount = 1
             }
 
-            val selModel = if (selectedProvider.models.isNotEmpty()) selectedProvider.models.first() else "gemini-2.5-flash"
+            val selModel = if (selectedProvider.models.isNotEmpty()) selectedProvider.models.first() else ""
 
             return ResolvedRoute(
                 provider = selectedProvider,
@@ -208,7 +208,7 @@ object LlmRouteSelector {
         var targetProvider = validatedProviders.find { it.id == activeId }
             ?: fallbackToAnyActiveProvider(validatedProviders, activeId)
 
-        val selModel = if (targetProvider.models.isNotEmpty()) targetProvider.models.first() else "gemini-2.5-flash"
+        val selModel = if (targetProvider.models.isNotEmpty()) targetProvider.models.first() else ""
         
         return ResolvedRoute(
             provider = targetProvider,

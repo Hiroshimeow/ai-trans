@@ -15,8 +15,7 @@ class LlmRouter(
     fun getAdapter(provider: LlmProvider): LlmAdapter {
         return when (provider.protocol) {
             ProviderProtocol.GeminiGenerateContent -> {
-                val apiKey = if (provider.apiKey.isNotEmpty()) provider.apiKey else getGeminiApiKey()
-                GeminiAdapter(apiKey, mcpRepository)
+                GeminiAdapter(provider.apiKey, mcpRepository)
             }
             ProviderProtocol.OpenAiChatCompletions,
             ProviderProtocol.OllamaChatCompletions,
@@ -24,14 +23,6 @@ class LlmRouter(
                 OpenAiAdapter(provider.endpointUrl, provider.apiKey)
             }
         }
-    }
-
-    private fun getGeminiApiKey(): String {
-        val apiKey = BuildConfig.GEMINI_API_KEY
-        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            throw java.lang.IllegalStateException("Gemini API Key is missing. Please add it via the Settings or Secrets panel in AI Studio.")
-        }
-        return apiKey
     }
 
     suspend fun submitMessage(
@@ -62,13 +53,13 @@ class LlmRouter(
     }
 
     // Facade to old methods for audio which always route to Gemini for now to preserve functionality
-    suspend fun transcribeAudio(audioBytes: ByteArray, promptText: String): String {
-        val adapter = GeminiAdapter(getGeminiApiKey(), mcpRepository) // defaults to gemini
-        return adapter.transcribeAudio(audioBytes, promptText)
+    suspend fun transcribeAudio(audioBytes: ByteArray, promptText: String, provider: LlmProvider, model: String): String {
+        val adapter = getAdapter(provider)
+        return adapter.transcribeAudio(audioBytes, promptText, model)
     }
 
-    suspend fun polishAudioAndTxt(audioBytes: ByteArray?, rawSTT: String): String {
-        val adapter = GeminiAdapter(getGeminiApiKey(), mcpRepository) // defaults to gemini
-        return adapter.polishAudioAndTxt(audioBytes, rawSTT)
+    suspend fun polishAudioAndTxt(audioBytes: ByteArray?, rawSTT: String, provider: LlmProvider, model: String): String {
+        val adapter = getAdapter(provider)
+        return adapter.polishAudioAndTxt(audioBytes, rawSTT, model)
     }
 }

@@ -469,7 +469,11 @@ abstract class AppDatabase : RoomDatabase() {
                     "screen_chat_workspace_db"
                 )
                 .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
-                .fallbackToDestructiveMigration() // Adding this just in case as early MVP
+                .apply {
+                    if (com.example.BuildConfig.DEBUG) {
+                        fallbackToDestructiveMigration()
+                    }
+                }
                 .build()
                 INSTANCE = instance
                 instance

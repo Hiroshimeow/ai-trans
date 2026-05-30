@@ -100,11 +100,11 @@ class OpenAiAdapter(
         }
     }
 
-    override suspend fun transcribeAudio(audioBytes: ByteArray, promptText: String): String {
+    override suspend fun transcribeAudio(audioBytes: ByteArray, promptText: String, model: String): String {
         throw UnsupportedOperationException("OpenAI Adapter currently does not support audio transcription locally.")
     }
 
-    override suspend fun polishAudioAndTxt(audioBytes: ByteArray?, rawSTT: String): String {
+    override suspend fun polishAudioAndTxt(audioBytes: ByteArray?, rawSTT: String, model: String): String {
         throw UnsupportedOperationException("OpenAI Adapter currently does not support multimodal audio polishing locally.")
     }
 }

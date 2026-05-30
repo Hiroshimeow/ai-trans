@@ -41,7 +41,7 @@ class McpClientImpl(
         }
 
         val request = Request.Builder()
-            .url(server.baseUrl.removeSuffix("/") + "/message") // Standard MCP HTTP POST endpoint
+            .url(server.baseUrl) // Standard MCP HTTP POST endpoint
             .post(payload.toString().toRequestBody(jsonMediaType))
             .apply {
                 if (token.isNotEmpty()) {
@@ -98,7 +98,7 @@ class McpClientImpl(
         }
 
         val request = Request.Builder()
-            .url(server.baseUrl.removeSuffix("/") + "/message")
+            .url(server.baseUrl)
             .post(payload.toString().toRequestBody(jsonMediaType))
             .apply {
                 if (token.isNotEmpty()) {

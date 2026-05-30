@@ -108,7 +108,7 @@ class WorkspaceRepository(
             ?: LlmProvider.getDefaultProviders().first()
 
         val endpoint = activeProvider.endpointUrl
-        val model = if (activeProvider.models.isNotEmpty()) activeProvider.models.first() else "gemini-2.5-flash"
+        val model = if (activeProvider.models.isNotEmpty()) activeProvider.models.first() else ""
         val provider = activeProvider.id
         val apiKey = activeProvider.apiKey
         val maxTokens = activeProvider.maxTokens
@@ -422,11 +422,13 @@ class WorkspaceRepository(
     suspend fun transcribeAudioFile(audioFile: java.io.File): String {
         val audioBytes = audioFile.readBytes()
         val sttPrompt = settingsManager.sttPrompt
-        return llmRouter.transcribeAudio(audioBytes, sttPrompt)
+        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager)
+        return llmRouter.transcribeAudio(audioBytes, sttPrompt, route.provider, route.selectedModel)
     }
 
     suspend fun polishAudioAndTxt(audioFile: java.io.File, rawSTT: String): String {
         val audioBytes = if (audioFile.exists() && audioFile.length() > 0) audioFile.readBytes() else null
-        return llmRouter.polishAudioAndTxt(audioBytes, rawSTT)
+        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager)
+        return llmRouter.polishAudioAndTxt(audioBytes, rawSTT, route.provider, route.selectedModel)
     }
 }

@@ -65,15 +65,24 @@ class GeminiAdapter(
         // 4. Resolve MCP Tools
         val mcpToolsToRun = mutableListOf<FunctionDeclaration>()
         val toolIdToMcpMeta = mutableMapOf<String, com.example.data.McpToolEntity>()
+        val duplicates = mutableSetOf<String>()
         val enabledServers = mcpRepository.getEnabledServersSync()
         
         for (server in enabledServers) {
             val tools = mcpRepository.getEnabledToolsForServer(server.id)
             for (t in tools) {
                 try {
+                    val safeName = t.name.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                    if (toolIdToMcpMeta.containsKey(safeName) || duplicates.contains(safeName)) {
+                        Log.w(tag, "Duplicate tool name detected: \$safeName. It will be excluded.")
+                        duplicates.add(safeName)
+                        toolIdToMcpMeta.remove(safeName)
+                        mcpToolsToRun.removeIf { it.name == safeName }
+                        continue
+                    }
+
                     val schemaObj = org.json.JSONObject(t.inputSchemaJson)
                     val parametersMap = jsonObjectToMap(schemaObj)
-                    val safeName = t.name.replace(Regex("[^a-zA-Z0-9_-]"), "_")
                     val desc = if (t.description.isNotBlank()) t.description else safeName
                     
                     val functionDeclaration = FunctionDeclaration(
@@ -148,7 +157,7 @@ class GeminiAdapter(
         throw IOException("Exceeded maximum tool-call iterations without returning final text")
     }
 
-    override suspend fun transcribeAudio(audioBytes: ByteArray, promptText: String): String = withContext(Dispatchers.IO) {
+    override suspend fun transcribeAudio(audioBytes: ByteArray, promptText: String, model: String): String = withContext(Dispatchers.IO) {
         val base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
         val request = GenerateContentRequest(
             contents = listOf(
@@ -162,12 +171,12 @@ class GeminiAdapter(
             generationConfig = GenerationConfig(temperature = 0.1f)
         )
 
-        val response = GeminiRetrofitClient.service.generateContent("gemini-1.5-flash", apiKey, request)
+        val response = GeminiRetrofitClient.service.generateContent(model, apiKey, request)
         return@withContext response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim() 
             ?: throw IOException("Empty transcript from Gemini")
     }
 
-    override suspend fun polishAudioAndTxt(audioBytes: ByteArray?, rawSTT: String): String = withContext(Dispatchers.IO) {
+    override suspend fun polishAudioAndTxt(audioBytes: ByteArray?, rawSTT: String, model: String): String = withContext(Dispatchers.IO) {
         val promptText = """
 Bạn là Trợ lý AI chuyên nghiệp về hiệu đính và tối ưu hóa tài liệu/biên bản cuộc họp.
 Dưới đây là một file âm thanh ghi âm cuộc họp, đi kèm với nội dung chuyển ngữ thô (raw STT) được ghi lại theo thời gian thực trên thiết bị.
@@ -188,7 +197,7 @@ NỘI DUNG CHUYỂN NGỮ THÔ (RAW STT):
             generationConfig = GenerationConfig(temperature = 0.2f)
         )
 
-        val response = GeminiRetrofitClient.service.generateContent("gemini-2.5-flash", apiKey, request)
+        val response = GeminiRetrofitClient.service.generateContent(model, apiKey, request)
         return@withContext response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim() 
             ?: throw IOException("Polishing failed. No feedback from Gemini service.")
     }

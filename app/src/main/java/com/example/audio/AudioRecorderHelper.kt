@@ -15,10 +15,21 @@ import java.nio.ByteOrder
 import kotlin.math.sqrt
 
 class AudioRecorderHelper(
-    private val context: Context,
-    private val scope: CoroutineScope
+    private val context: Context
 ) {
+    companion object {
+        @Volatile
+        private var instance: AudioRecorderHelper? = null
+        
+        fun getInstance(context: Context): AudioRecorderHelper {
+            return instance ?: synchronized(this) {
+                instance ?: AudioRecorderHelper(context.applicationContext).also { instance = it }
+            }
+        }
+    }
+
     private val tag = "AudioRecorderHelper"
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var audioRecord: AudioRecord? = null
     private var recordJob: Job? = null

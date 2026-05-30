@@ -102,6 +102,7 @@ dependencies {
   implementation(libs.androidx.security.crypto)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
+  implementation(libs.snakeyaml)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

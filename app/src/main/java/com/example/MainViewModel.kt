@@ -30,7 +30,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val llmRouter = com.example.llm.LlmRouter(context, settingsManager, mcpRepository)
     private val repository = WorkspaceRepository(context, database, llmRouter)
 
-    private val recorderHelper = AudioRecorderHelper(context, viewModelScope)
+    private val recorderHelper = AudioRecorderHelper.getInstance(context)
     private val playerHelper = AudioPlayerHelper()
     private val ttsHelper = TtsHelper(context)
     private var localSpeechHelper: OnDeviceSpeechHelper? = null
@@ -673,7 +673,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        recorderHelper.stopRecording()
         playerHelper.stopAudio()
         ttsHelper.shutdown()
         localSpeechHelper?.stopListening()
