@@ -351,7 +351,7 @@ class WorkspaceLlmBridge(
      */
     suspend fun polishAudioAndTxt(audioFile: File, rawSTT: String): String = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
-        val polishModel = settingsManager.sttModel.ifBlank { "gemini-3.5-flash" }
+        val polishModel = settingsManager.sttModel.ifBlank { "gemini-2.5-flash" }
 
         val detectedMimeType = if (audioFile.name.endsWith(".mp3", ignoreCase = true)) {
             "audio/mp3"

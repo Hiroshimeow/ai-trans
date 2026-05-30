@@ -55,25 +55,19 @@ data class LlmProvider(
                     endpointUrl = "",
                     apiKey = "",
                     models = listOf(
-                        "gemini-3.5-flash", 
-                        "gemini-3.5-flash-agent",
-                        "gemini-3.1-flash-live-preview", 
-                        "gemini-3.1-flash-tts-preview", 
-                        "gemini-2.5-flash-preview-tts", 
-                        "gemini-3.1-flash-lite", 
                         "gemini-2.5-flash",
-                        "gemini-1.5-flash", 
-                        "gemini-1.5-pro", 
-                        "gemini-2.5-flash-native-audio-preview-12-2025"
+                        "gemini-2.5-pro",
+                        "gemini-1.5-flash",
+                        "gemini-1.5-pro"
                     ),
                     maxTokens = 4096
                 ),
                 LlmProvider(
-                    id = "openai",
-                    name = "OpenAI Official",
-                    endpointUrl = "https://api.openai.com/v1",
+                    id = "openai_compatible",
+                    name = "Custom OpenAI-Compatible",
+                    endpointUrl = "https://api.your-endpoint.com/v1",
                     apiKey = "",
-                    models = listOf("o3-mini", "o1", "gpt-4o", "gpt-4o-mini", "gpt-4.5-preview"),
+                    models = listOf("gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet"),
                     maxTokens = 4096
                 )
             )

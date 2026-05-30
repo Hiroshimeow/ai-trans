@@ -108,7 +108,7 @@ class WorkspaceRepository(
             ?: LlmProvider.getDefaultProviders().first()
 
         val endpoint = activeProvider.endpointUrl
-        val model = if (activeProvider.models.isNotEmpty()) activeProvider.models.first() else "gemini-3.5-flash"
+        val model = if (activeProvider.models.isNotEmpty()) activeProvider.models.first() else "gemini-2.5-flash"
         val provider = activeProvider.id
         val apiKey = activeProvider.apiKey
         val maxTokens = activeProvider.maxTokens

@@ -66,7 +66,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Visual Controls
     val isFloatViewMode = MutableStateFlow(false)
-    val floatOcrResult = MutableStateFlow<String?>(null)
     val errorString = MutableStateFlow<String?>(null)
 
     // Recording Runtime States
@@ -573,39 +572,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             composerText.value = "$currentText\n$plainText"
         }
-    }
-
-    // --- Simulate OCR Screenshot Flow (Float UI Card actions) ---
-
-    fun runSimulatedScreenOcr(simulatedText: String, imageUri: Uri) {
-        val sessionId = _activeSessionId.value ?: return
-        viewModelScope.launch {
-            // Write simulated OCR text as extractedText in Room
-            val textToUse = simulatedText.ifEmpty { "Simulated OCR content containing technical reference codes." }
-            repository.addAttachment(
-                sessionId = sessionId,
-                uri = imageUri.toString(),
-                displayName = "Screen_Snap_${System.currentTimeMillis()}.png",
-                mimeType = "image/png",
-                sizeBytes = 204800L,
-                source = "screenshot"
-            )
-
-            // Update Float OCR results
-            floatOcrResult.value = "Recognized Text:\n$textToUse"
-
-            // Append directly into composer for continuing chat
-            val currentText = composerText.value
-            if (currentText.isEmpty()) {
-                composerText.value = "Analyze screenshot containing: \"$textToUse\""
-            } else {
-                composerText.value = "$currentText\n[OCR Snapshot Context: $textToUse]"
-            }
-        }
-    }
-
-    fun clearOcrResults() {
-        floatOcrResult.value = null
     }
 
     fun dismissError() {

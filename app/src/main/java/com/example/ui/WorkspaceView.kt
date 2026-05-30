@@ -688,7 +688,7 @@ fun SidebarPanel(
                             DropdownMenu(
                                 expanded = expandedSkillId == p.id,
                                 onDismissRequest = { expandedSkillId = null },
-                                modifier = Modifier.background(SurfaceSlate)
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                             ) {
                                 DropdownMenuItem(
                                     text = {
@@ -700,7 +700,7 @@ fun SidebarPanel(
                                                 modifier = Modifier.scale(0.85f)
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Always On", fontSize = 12.sp, color = Color(0xFF1B1B1F))
+                                            Text("Always On", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
                                         }
                                     },
                                     onClick = {
@@ -709,7 +709,7 @@ fun SidebarPanel(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("View details", fontSize = 12.sp, color = Color(0xFF1B1B1F)) },
+                                    text = { Text("View details", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface) },
                                     onClick = {
                                         skillToView = p
                                         expandedSkillId = null
@@ -717,7 +717,7 @@ fun SidebarPanel(
                                 )
                                 if (!p.builtIn) {
                                     DropdownMenuItem(
-                                        text = { Text("Edit skill", fontSize = 12.sp, color = Color(0xFF1B1B1F)) },
+                                        text = { Text("Edit skill", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface) },
                                         onClick = {
                                             skillToEdit = p
                                             expandedSkillId = null
@@ -904,11 +904,11 @@ fun ChatPanel(
                             DropdownMenu(
                                 expanded = providerExpanded,
                                 onDismissRequest = { providerExpanded = false },
-                                modifier = Modifier.background(SurfaceSlate)
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                             ) {
                                 providers.forEach { prov ->
                                     DropdownMenuItem(
-                                        text = { Text(prov.name, fontSize = 11.sp, color = Color(0xFF1B1B1F)) },
+                                        text = { Text(prov.name, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface) },
                                         onClick = {
                                             providerExpanded = false
                                             val firstModel = prov.models.firstOrNull() ?: ""
@@ -953,11 +953,11 @@ fun ChatPanel(
                                     DropdownMenu(
                                         expanded = modelExpanded,
                                         onDismissRequest = { modelExpanded = false },
-                                        modifier = Modifier.background(SurfaceSlate)
+                                        modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                                     ) {
                                         availableModels.forEach { m ->
                                             DropdownMenuItem(
-                                                text = { Text(m, fontSize = 11.sp, color = Color(0xFF1B1B1F)) },
+                                                text = { Text(m, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface) },
                                                 onClick = {
                                                     modelExpanded = false
                                                     viewModel.updateActiveSessionLlmConfig(
@@ -982,7 +982,7 @@ fun ChatPanel(
                                     TextField(
                                         value = customModelInput,
                                         onValueChange = { customModelInput = it },
-                                        placeholder = { Text("e.g. gemini-3.5-flash", fontSize = 11.sp) },
+                                        placeholder = { Text("e.g. gemini-2.5-flash", fontSize = 11.sp) },
                                         modifier = Modifier.weight(1f).padding(vertical = 2.dp),
                                         textStyle = TextStyle(fontSize = 11.sp),
                                         colors = TextFieldDefaults.colors(focusedContainerColor = Color(0xFFF3F3FA), unfocusedContainerColor = Color(0xFFF3F3FA))
@@ -1027,11 +1027,11 @@ fun ChatPanel(
                                 DropdownMenu(
                                     expanded = modelExpanded,
                                     onDismissRequest = { modelExpanded = false },
-                                    modifier = Modifier.background(SurfaceSlate)
+                                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                                 ) {
                                     availableModels.forEach { m ->
                                         DropdownMenuItem(
-                                            text = { Text(m, fontSize = 11.sp, color = Color(0xFF1B1B1F)) },
+                                            text = { Text(m, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface) },
                                             onClick = {
                                                 modelExpanded = false
                                                 viewModel.updateActiveSessionLlmConfig(
@@ -2171,7 +2171,6 @@ fun FloatSimulationView(viewModel: MainViewModel) {
     val isRecording by viewModel.isRecordingAudio.collectAsStateWithLifecycle()
     val rms by viewModel.recordingRmsAmplitude.collectAsStateWithLifecycle()
     val isTranscribing by viewModel.isTranscribingAudio.collectAsStateWithLifecycle()
-    val ocrText by viewModel.floatOcrResult.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -2322,67 +2321,15 @@ fun FloatSimulationView(viewModel: MainViewModel) {
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Divider(color = BorderSlate, thickness = 0.5.dp)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            android.widget.Toast.makeText(context, "Chức năng Chụp màn hình (MediaProjection OCR) đang được bảo trì. Vui lòng hỏi bằng giọng nói hoặc nhập văn bản trực tiếp.", android.widget.Toast.LENGTH_LONG).show()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = BorderSlate),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp)
-                    ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp), tint = SlateTextSecondary)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Chụp màn hình (MediaProjection OCR)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
-                    }
-                }
-                }
-
-                if (ocrText != null) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(BorderSlate)
-                            .padding(12.dp)
-                    ) {
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("COMPACT OCR DATA", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = GlowCyan)
-                                IconButton(onClick = { viewModel.clearOcrResults() }, modifier = Modifier.size(18.dp)) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear", tint = SlateTextSecondary, modifier = Modifier.size(10.dp))
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(ocrText ?: "", fontSize = 11.sp, color = Color(0xFF1B1B1F))
-
-                            Spacer(modifier = Modifier.height(6.dp))
-                            TextButton(
-                                onClick = {
-                                    viewModel.isFloatViewMode.value = false
-                                },
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("View details inside workspace →", fontSize = 10.sp, color = GlowCyan, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    "Giao diện Quick Overlay đã sẵn sàng phục vụ.",
+                    fontSize = 11.sp,
+                    color = SlateTextSecondary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                )
             }
         }
     }
@@ -2599,7 +2546,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 providersList.forEach { provider ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E24)),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F7)),
                         border = BorderStroke(1.dp, BorderSlate)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
@@ -2619,8 +2566,8 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Column {
-                                        Text(provider.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        Text("Models Count: ${provider.models.size}", fontSize = 10.sp, color = Color(0xFFC4C6D0))
+                                        Text(provider.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B1B1F))
+                                        Text("Models Count: ${provider.models.size}", fontSize = 10.sp, color = SlateTextSecondary)
                                     }
                                 }
                                 Row {
@@ -2711,7 +2658,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                         text = "Max Token Limits: ${String.format(Locale.US, "%,d", maxTokensCoerced.toInt())}",
                                         fontSize = 11.sp, 
                                         fontWeight = FontWeight.Bold, 
-                                        color = Color(0xFFE2E2E9)
+                                        color = Color(0xFF1B1B1F)
                                     )
                                     Slider(
                                         value = maxTokensCoerced,
@@ -2884,7 +2831,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E24)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F7)),
                     border = BorderStroke(1.dp, BorderSlate)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -2895,8 +2842,8 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Round Robin Strategy", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text("Cycle through accounts systematically for queries", fontSize = 9.sp, color = Color(0xFFC4C6D0))
+                                Text("Round Robin Strategy", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B1B1F))
+                                Text("Cycle through accounts systematically for queries", fontSize = 9.sp, color = SlateTextSecondary)
                             }
                             Switch(
                                 checked = routeRoundRobin,
@@ -2918,7 +2865,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Sticky Query Limit", fontSize = 11.sp, color = Color(0xFFC4C6D0))
+                                Text("Sticky Query Limit", fontSize = 11.sp, color = SlateTextSecondary)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(
                                         onClick = { routeStickyLimit = (routeStickyLimit - 1).coerceAtLeast(1) },
@@ -2930,7 +2877,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                         text = "$routeStickyLimit",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White,
+                                        color = Color(0xFF1B1B1F),
                                         modifier = Modifier.padding(horizontal = 8.dp)
                                     )
                                     IconButton(
@@ -2954,8 +2901,8 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Combo Round Robin", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text("Cycle over Account-Model pairs instead of provider-only selection", fontSize = 9.sp, color = Color(0xFFC4C6D0))
+                                Text("Combo Round Robin", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B1B1F))
+                                Text("Cycle over Account-Model pairs instead of provider-only selection", fontSize = 9.sp, color = SlateTextSecondary)
                             }
                             Switch(
                                 checked = routeComboRoundRobin,

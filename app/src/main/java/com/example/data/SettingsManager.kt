@@ -7,15 +7,15 @@ class SettingsManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("screen_chat_settings", Context.MODE_PRIVATE)
 
     var chatModel: String
-        get() = prefs.getString("chat_model", "gemini-3.5-flash") ?: "gemini-3.5-flash"
+        get() = prefs.getString("chat_model", "gemini-2.5-flash") ?: "gemini-2.5-flash"
         set(value) = prefs.edit().putString("chat_model", value).apply()
 
     var sttModel: String
-        get() = prefs.getString("stt_model", "gemini-2.5-flash-native-audio-preview-12-2025") ?: "gemini-2.5-flash-native-audio-preview-12-2025"
+        get() = prefs.getString("stt_model", "gemini-2.5-flash") ?: "gemini-2.5-flash"
         set(value) = prefs.edit().putString("stt_model", value).apply()
 
     var fallbackSttModel: String
-        get() = prefs.getString("fallback_stt_model", "gemini-3.5-flash") ?: "gemini-3.5-flash"
+        get() = prefs.getString("fallback_stt_model", "gemini-2.5-flash") ?: "gemini-2.5-flash"
         set(value) = prefs.edit().putString("fallback_stt_model", value).apply()
 
     var vllmBaseUrl: String
