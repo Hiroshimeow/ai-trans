@@ -72,7 +72,7 @@ class SettingsManager(context: Context) {
         set(value) = prefs.edit().putString("custom_endpoint_url", value).apply()
 
     var customModelName: String
-        get() = prefs.getString("custom_model_name", "gpt-4o") ?: "gpt-4o"
+        get() = prefs.getString("custom_model_name", "") ?: ""
         set(value) = prefs.edit().putString("custom_model_name", value).apply()
 
     var customApiKey: String

@@ -1057,7 +1057,7 @@ fun ChatPanel(
                         Spacer(modifier = Modifier.height(6.dp))
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E24).copy(alpha = 0.5f)),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                             border = BorderStroke(0.5.dp, BorderSlate)
                         ) {
                             Column(modifier = Modifier.padding(8.dp)) {
@@ -1211,7 +1211,7 @@ fun ChatPanel(
                     .fillMaxWidth()
                     .padding(vertical = 6.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1E1E24))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(1.dp, BorderSlate, RoundedCornerShape(10.dp))
                     .padding(10.dp)
             ) {
@@ -1262,7 +1262,7 @@ fun ChatPanel(
                                     Text(
                                         text = "Live trans: $liveSpeechResultVal",
                                         fontSize = 11.sp,
-                                        color = Color.White,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontWeight = FontWeight.Medium,
                                         modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
                                     )
@@ -2924,7 +2924,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Combo Sticky Limit", fontSize = 11.sp, color = Color(0xFFC4C6D0))
+                                Text("Combo Sticky Limit", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(
                                         onClick = { routeComboStickyLimit = (routeComboStickyLimit - 1).coerceAtLeast(1) },
@@ -3136,7 +3136,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
 
                             val activeObj = providersList.find { it.id == activeProviderId }
                             if (activeObj != null) {
-                                viewModel.settingsManager.preferredProvider = if (activeProviderId == "gemini") "gemini" else "openai_compatible"
+                                viewModel.settingsManager.preferredProvider = if (activeProviderId == "gemini") "gemini" else "custom"
                                 viewModel.settingsManager.customEndpointUrl = activeObj.endpointUrl
                                 viewModel.settingsManager.customModelName = activeObj.models.firstOrNull() ?: ""
                                 viewModel.settingsManager.customApiKey = activeObj.apiKey

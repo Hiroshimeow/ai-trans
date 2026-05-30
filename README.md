@@ -1,6 +1,6 @@
 # Screen Chat Workspace (Screens-Trans-Chatbot)
 
-Screen Chat Workspace is a high-performance Android application engineered to unify mobile screen interaction, multi-provider LLM integration, speech processing, and continuous meeting synchronization. It consists of a non-blocking Floating Overlay (Float UI) for ambient, on-screen captures and a comprehensive Screen Chat Workspace (Core UI) for full-session context management, attachment tracking, and customizable routing.
+Screen Chat Workspace is a high-performance Android application engineered to unify mobile screen interaction, multi-provider LLM integration, speech processing, and continuous meeting synchronization. It consists of an In-app Floating HUD Mode for quick microphone / voice capture and a comprehensive Screen Chat Workspace (Core UI) for full-session context management, attachment tracking, and customizable routing.
 
 ---
 
@@ -8,7 +8,7 @@ Screen Chat Workspace is a high-performance Android application engineered to un
 
 This application utilizes Clean Architecture principles layered with Jetpack Compose, the Room Database, Kotlin Coroutines, and StateFlow structures.
 
-### A. Non-Blocking Floating HUD Overlay (Float UI)
+### A. In-app Floating HUD Mode
 * **Ambient Floating Microphone**: Enables micro-capturing, fast Speech-To-Text translation on on-screen targets, and quick-reply execution.
 * **Adaptive Integration**: Serves as a quick-launch utility. Toggling between standard workspace panes and overlay systems preserves full session states.
 
@@ -33,10 +33,6 @@ This application utilizes Clean Architecture principles layered with Jetpack Com
   - **Combo Cycle**: Loops requests across diverse provider combinations and model weights sequentially.
 * **Fault-Backoff Throttling**: Restricts immediate retries on highly limited or faulted endpoints. Incorporates a smart cooldown window to prevent rapid rate-limit loops.
 
-### F. CI/CD & Build Notes
-* **Local Builds**: Ensure `JAVA_HOME` is set to JDK 17+ and the `gradlew` script has executable permissions (`chmod +x gradlew`).
-* **Tests**: Test suites rely on Robolectric and require proper JDK environments. Always run `./gradlew testDebugUnitTest` prior to merging features.
-
 ---
 
 ## 2. Dynamic Environment & Secret Management
@@ -59,20 +55,18 @@ To build or inspect this project, ensure your local development machine contains
 * **Java Development Kit (JDK)**: Version 17 or higher. Set your `JAVA_HOME` environment path dynamically.
 * **Android Studio**: Android Studio Koala (2024.1.1) or higher is recommended.
 * **Android SDK**: Build Tools `34.0.0` or higher, Target SDK `34`, Minimum SDK `26`.
-* **Gradle Wrapper**: This repository strictly utilizes modern Gradle project builds (`build.gradle.kts` with Kotlin DSL).
+* **Gradle Wrapper**: This repository strictly utilizes modern Gradle project builds (`build.gradle.kts` with Kotlin DSL). Ensure the `gradlew` script has executable permissions (`chmod +x gradlew`).
 
 ---
 
 ## 4. Compilation & Build Guide
 
-You can easily compile, test, and build the application through the command-line interface.
-
-> **Note**: Always use `gradle` directly instead of `./gradlew` or `./gradlew.bat` in this container sandbox environment.
+You can easily compile, test, and build the application through the command-line interface using the provided Gradle wrapper.
 
 ### A. General Development Build (Debug APK)
 To build a debuggable installation file containing structural logging and instant-run features:
 ```bash
-gradle assembleDebug
+./gradlew assembleDebug
 ```
 The compiled output is output to:
 `app/build/outputs/apk/debug/app-debug.apk`
@@ -80,7 +74,7 @@ The compiled output is output to:
 ### B. Unit & Robolectric Testing
 To execute fast JUnit business-logic tests alongside JVM-based shadow framework tests:
 ```bash
-gradle :app:testDebugUnitTest
+./gradlew :app:testDebugUnitTest
 ```
 
 ### C. Production Release Package (Release APK / Bundle)
@@ -88,11 +82,11 @@ To generate a fully minimized, high-performance binary optimized and signed for 
 1. Register signature keys inside `/app/build.gradle.kts` or `gradle.properties`.
 2. Clean existing caches (only as a last resort) and execute:
    ```bash
-   gradle assembleRelease
+   ./gradlew assembleRelease
    ```
    Or to build a dynamic distribution bundle (AAB):
    ```bash
-   gradle bundleRelease
+   ./gradlew bundleRelease
    ```
 
 ---
@@ -106,7 +100,7 @@ If you are a tester, client, or end-user who does not wish to configure compiler
 3. Download the generated `.apk` file directly onto your test mobile device.
 4. On your Android device, navigate to your downloads catalog, locate the package, and click to install.
    - *Note*: Ensure "Install from Unknown Sources" is toggled in your device's security preferences if prompt warnings trigger.
-5. Grant necessary runtime permissions upon initial launch (Microphone for audio recording, Display Draw Overlays for the Floating Float UI) to access full services.
+5. Grant necessary runtime permissions upon initial launch (Microphone for audio recording) to access full services.
 
 ---
 
@@ -114,8 +108,8 @@ If you are a tester, client, or end-user who does not wish to configure compiler
 
 ### A. Provisioning LLMs
 1. Open the workspace panel, navigate to the **Settings** cog ⚙️.
-2. In the **Manage LLM Providers** view, select your designated channel (e.g. Gemini, OpenAI compatibles) and click **Edit**.
-3. Input your secret API Key, define list components of model tags (comma separated, e.g. `gemini-1.5-flash,gemini-1.5-pro,gemini-2.0-flash-exp`), and establish token allocation limits using the slider mechanism. Save changes.
+2. In the **Manage LLM Providers** view, select your designated channel (e.g. Gemini, custom HTTP providers) and click **Edit**.
+3. Input your secret API Key, define list components of model tags (comma separated, e.g. `gemini-1.5-flash,gemini-1.5-pro,gemini-2.5-flash`), and establish token allocation limits using the slider mechanism. Save changes.
 
 ### B. Triggering Route Allocation Rules
 1. Inside the LLM routing tab, select your preferred routing policy: **Round Robin**, **Sticky**, or **Combo Cycle**.

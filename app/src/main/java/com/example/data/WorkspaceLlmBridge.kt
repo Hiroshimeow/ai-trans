@@ -50,7 +50,7 @@ class WorkspaceLlmBridge(
             val apiKey = if (!sessionApiKey.isNullOrEmpty()) sessionApiKey else settingsManager.customApiKey
             val maxTokens = sessionMaxTokens ?: 4096
 
-            return@withContext submitOpenAiMessage(
+            return@withContext submitOpenAiCompatibleMessage(
                 chatHistory = chatHistory,
                 userMessage = userMessage,
                 systemPrompt = systemPrompt,
@@ -124,7 +124,7 @@ class WorkspaceLlmBridge(
         }
     }
 
-    private suspend fun submitOpenAiMessage(
+    private suspend fun submitOpenAiCompatibleMessage(
         chatHistory: List<MessageEntity>,
         userMessage: MessageEntity,
         systemPrompt: String,
