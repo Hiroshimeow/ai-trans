@@ -1104,7 +1104,7 @@ fun ChatPanel(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        "Attach screenshots, select prompt skills, or start recording audio files to analyze. Your chat runtime resolves context adaptively.",
+                        "Attach files, select prompt skills, or start recording audio files to analyze. Your chat runtime resolves context adaptively.",
                         fontSize = 12.sp,
                         color = SlateTextSecondary,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -1585,7 +1585,7 @@ fun MeetingTabContent(viewModel: MainViewModel, onStartMeetingClick: () -> Unit)
                         "Workspace Meeting Sync",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = Color(0xFF1B1B1F)
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -1813,7 +1813,7 @@ fun MeetingTabContent(viewModel: MainViewModel, onStartMeetingClick: () -> Unit)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    "Cuộc họp được lưu đồng thời xuống file .wav và .txt trong bộ nhớ cache liên tục của Workspace. Nếu có sự cố tắt máy hoặc crash bất ngờ, dữ liệu văn bản họp vẫn đầy đủ.",
+                    "Workspace cố gắng lưu transcript nháp định kỳ xuống cache khi có cập nhật live.",
                     fontSize = 10.sp,
                     color = SlateTextSecondary,
                     lineHeight = 14.sp
@@ -2341,10 +2341,10 @@ fun FloatSimulationView(viewModel: MainViewModel) {
 @Composable
 fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
     val sttChoices = listOf(
-        "gemini-2.5-flash-native-audio-preview-12-2025",
-        "gemini-2.5-flash-preview-tts",
-        "gemini-3.1-flash-live-preview",
-        "gemini-1.5-flash"
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
     )
 
     var cModel by remember { mutableStateOf(viewModel.settingsManager.chatModel) }
@@ -2936,7 +2936,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                         text = "$routeComboStickyLimit",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White,
+                                        color = Color(0xFF1B1B1F),
                                         modifier = Modifier.padding(horizontal = 8.dp)
                                     )
                                     IconButton(
@@ -3337,7 +3337,7 @@ fun ViewSkillDialog(
                 .fillMaxWidth()
                 .wrapContentHeight()
                 .padding(16.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceSlate),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             shape = RoundedCornerShape(12.dp)
         ) {
             Column(
@@ -3366,12 +3366,12 @@ fun ViewSkillDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 240.dp)
-                        .background(CosmicDark, RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp))
                         .border(1.dp, BorderSlate, RoundedCornerShape(6.dp))
                         .verticalScroll(rememberScrollState())
                         .padding(12.dp)
                 ) {
-                    Text(skill.content, fontSize = 12.sp, color = Color(0xFF1B1B1F), fontFamily = FontFamily.Monospace)
+                    Text(skill.content, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

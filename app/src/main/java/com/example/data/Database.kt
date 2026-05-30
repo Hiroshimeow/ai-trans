@@ -43,7 +43,7 @@ data class AttachmentEntity(
     val displayName: String,
     val mimeType: String,
     val sizeBytes: Long,
-    val source: String, // "screenshot", "import", "recording"
+    val source: String, // "image", "import", "recording"
     val status: String, // "available", "selected", "already_in_chat"
     val extractedText: String? = null,
     val thumbnailUri: String? = null

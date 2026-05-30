@@ -9,7 +9,6 @@ Screen Chat Workspace is a high-performance Android application engineered to un
 This application utilizes Clean Architecture principles layered with Jetpack Compose, the Room Database, Kotlin Coroutines, and StateFlow structures.
 
 ### A. Non-Blocking Floating HUD Overlay (Float UI)
-* **On-Screen OCR Capture**: Instantly grabs screen pixels, extracts texts, and routes content directly into active workspace sessions without disrupting background tasks.
 * **Ambient Floating Microphone**: Enables micro-capturing, fast Speech-To-Text translation on on-screen targets, and quick-reply execution.
 * **Adaptive Integration**: Serves as a quick-launch utility. Toggling between standard workspace panes and overlay systems preserves full session states.
 
@@ -17,10 +16,10 @@ This application utilizes Clean Architecture principles layered with Jetpack Com
 * **Context Storage**: Fully managed Room SQLite persistence layer storing historical sessions, structured multi-role chat history, media attachments, and custom prompt templates.
 * **Unified Workspace Sync**: Synchronizes all active media uploads (Images, Raw TXT, PDFs, MP3, and WAV recordings) with underlying conversational models.
 
-### C. Continuous, Crash-Resilient Meeting Recorder
+### C. Meeting Recorder
 * **Low-Overhead Pipeline**: Employs a continuous PCM-WAV capturing core designed for hours of uninterrupted conference recording.
 * **On-Device Hybrid STT**: Integrates the Android local `SpeechRecognizer` to stream incremental, real-time draft segments on-device without blocking.
-* **Crash Resiliency & Data-Flush**: All live draft segments and captured byte chunks are flushed continuously to external storage caches (`.txt` and `.wav` structures) in real-time. In the event of a critical system crash, operating system low-memory process kills, or sudden power loss, transcribed texts and raw wave contents are persistent and completely recoverable.
+* **Data-Flush**: Live draft segments and captured chunks are periodically flushed to storage caches (.txt and .wav).
 
 ### D. Multimodal AI Polishing Engine
 * **Multimodal Joint Processing**: Employs Gemini API's multimodal framework to simultaneously ingest raw WAV recordings and draft `.txt` segments.
@@ -33,6 +32,10 @@ This application utilizes Clean Architecture principles layered with Jetpack Com
   - **Sticky Execution**: Dedicates calls to a preferred primary channel to maintain long-term session context continuity, falling back to auxiliary channels only when quota exhausts, throttling, or network faults are raised on-device.
   - **Combo Cycle**: Loops requests across diverse provider combinations and model weights sequentially.
 * **Fault-Backoff Throttling**: Restricts immediate retries on highly limited or faulted endpoints. Incorporates a smart cooldown window to prevent rapid rate-limit loops.
+
+### F. CI/CD & Build Notes
+* **Local Builds**: Ensure `JAVA_HOME` is set to JDK 17+ and the `gradlew` script has executable permissions (`chmod +x gradlew`).
+* **Tests**: Test suites rely on Robolectric and require proper JDK environments. Always run `./gradlew testDebugUnitTest` prior to merging features.
 
 ---
 

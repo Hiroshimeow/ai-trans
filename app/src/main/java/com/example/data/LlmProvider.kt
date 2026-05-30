@@ -61,14 +61,6 @@ data class LlmProvider(
                         "gemini-1.5-pro"
                     ),
                     maxTokens = 4096
-                ),
-                LlmProvider(
-                    id = "openai_compatible",
-                    name = "Custom OpenAI-Compatible",
-                    endpointUrl = "https://api.your-endpoint.com/v1",
-                    apiKey = "",
-                    models = listOf("gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet"),
-                    maxTokens = 4096
                 )
             )
         }
