@@ -278,6 +278,60 @@ interface TranscriptJobDao {
     suspend fun insertJob(job: TranscriptJobEntity)
 }
 
+@Entity(tableName = "mcp_servers")
+data class McpServerEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val baseUrl: String,
+    val tokenAlias: String,
+    val enabled: Boolean,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val lastConnectedAt: Long?,
+    val lastError: String?
+)
+
+@Entity(tableName = "mcp_tools")
+data class McpToolEntity(
+    @PrimaryKey val id: String,
+    val serverId: String,
+    val name: String,
+    val description: String,
+    val inputSchemaJson: String,
+    val enabled: Boolean,
+    val updatedAt: Long
+)
+
+@Dao
+interface McpDao {
+    @Query("SELECT * FROM mcp_servers ORDER BY createdAt ASC")
+    fun getAllServersFlow(): Flow<List<McpServerEntity>>
+
+    @Query("SELECT * FROM mcp_servers WHERE enabled = 1")
+    suspend fun getEnabledServersSync(): List<McpServerEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertServer(server: McpServerEntity)
+    
+    @Update
+    suspend fun updateServer(server: McpServerEntity)
+
+    @Query("DELETE FROM mcp_servers WHERE id = :id")
+    suspend fun deleteServerById(id: String)
+
+    @Query("SELECT * FROM mcp_tools WHERE serverId = :serverId")
+    suspend fun getToolsForServerSync(serverId: String): List<McpToolEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTools(tools: List<McpToolEntity>)
+
+    @Query("DELETE FROM mcp_tools WHERE serverId = :serverId")
+    suspend fun deleteToolsByServerId(serverId: String)
+
+    @Query("UPDATE mcp_tools SET enabled = :enabled WHERE id = :toolId")
+    suspend fun updateToolEnabled(toolId: String, enabled: Boolean)
+}
+
 @Database(
     entities = [
         SessionEntity::class,
@@ -287,9 +341,11 @@ interface TranscriptJobDao {
         RecordingEntity::class,
         RecordingSessionEntity::class,
         TranscriptSegmentEntity::class,
-        TranscriptJobEntity::class
+        TranscriptJobEntity::class,
+        McpServerEntity::class,
+        McpToolEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(DatabaseConverters::class)
@@ -302,6 +358,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recordingSessionDao(): RecordingSessionDao
     abstract fun transcriptSegmentDao(): TranscriptSegmentDao
     abstract fun transcriptJobDao(): TranscriptJobDao
+    abstract fun mcpDao(): McpDao
 
     companion object {
         @Volatile
@@ -310,6 +367,37 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `prompt_skills` ADD COLUMN `alwaysOn` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `mcp_servers` (
+                        `id` TEXT NOT NULL, 
+                        `name` TEXT NOT NULL, 
+                        `baseUrl` TEXT NOT NULL, 
+                        `tokenAlias` TEXT NOT NULL, 
+                        `enabled` INTEGER NOT NULL, 
+                        `createdAt` INTEGER NOT NULL, 
+                        `updatedAt` INTEGER NOT NULL, 
+                        `lastConnectedAt` INTEGER, 
+                        `lastError` TEXT, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `mcp_tools` (
+                        `id` TEXT NOT NULL, 
+                        `serverId` TEXT NOT NULL, 
+                        `name` TEXT NOT NULL, 
+                        `description` TEXT NOT NULL, 
+                        `inputSchemaJson` TEXT NOT NULL, 
+                        `enabled` INTEGER NOT NULL, 
+                        `updatedAt` INTEGER NOT NULL, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
             }
         }
 
@@ -380,7 +468,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "screen_chat_workspace_db"
                 )
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .fallbackToDestructiveMigration() // Adding this just in case as early MVP
                 .build()
                 INSTANCE = instance
                 instance

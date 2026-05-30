@@ -185,9 +185,8 @@ fun WorkspaceMainView(viewModel: MainViewModel) {
         )
     }
 
-    // Settings Dialog
-    if (showSettingsDialog) {
-        SettingsDialog(
+            if (showSettingsDialog) {
+        SettingsRoute(
             viewModel = viewModel,
             onDismiss = { showSettingsDialog = false }
         )
@@ -215,7 +214,7 @@ fun WorkspaceMainView(viewModel: MainViewModel) {
                     .fillMaxHeight(0.85f)
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                DetailsPanel(viewModel = viewModel, onStartMeetingClick = triggerMeetingSafely)
+                MeetingRoute(viewModel = viewModel, onStartMeetingClick = triggerMeetingSafely)
             }
         }
     }
@@ -310,7 +309,7 @@ fun MainScaffoldContent(
                     .weight(1f)
                     .fillMaxHeight()
             ) {
-                ChatPanel(
+                ChatRoute(
                     viewModel = viewModel,
                     triggerRecordingSafely = triggerRecordingSafely,
                     triggerVoiceQuestionSafely = triggerVoiceQuestionSafely
@@ -325,7 +324,7 @@ fun MainScaffoldContent(
                         .background(MaterialTheme.colorScheme.surface)
                         .border(1.dp, BorderSlate)
                 ) {
-                    DetailsPanel(viewModel = viewModel, onStartMeetingClick = triggerMeetingSafely)
+                    MeetingRoute(viewModel = viewModel, onStartMeetingClick = triggerMeetingSafely)
                 }
             }
         }

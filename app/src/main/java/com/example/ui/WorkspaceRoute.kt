@@ -9,14 +9,18 @@ data class WorkspaceUiState(
     val isFloatViewMode: Boolean = false,
     val errorString: String? = null,
     val activeSessionId: String? = null,
-    // Provide a partial view of state just for skeleton
+    val allSessions: List<com.example.data.SessionEntity> = emptyList(),
+    val isRecordingAudio: Boolean = false,
+    val recordingDurationMs: Long = 0L,
+    val recordingRmsAmplitude: Float = 0f,
+    val isVoiceQuestionActive: Boolean = false,
+    val isMeetingActive: Boolean = false
 )
 
 sealed interface WorkspaceEvent {
     data object ClearError : WorkspaceEvent
     data class SwitchToFloatMode(val float: Boolean) : WorkspaceEvent
     data class RequestPermission(val action: com.example.ui.components.RecordingAction) : WorkspaceEvent
-    // ...other events
 }
 
 @Composable

@@ -860,6 +860,10 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+                
+                McpSettingsSection(viewModel = viewModel)
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

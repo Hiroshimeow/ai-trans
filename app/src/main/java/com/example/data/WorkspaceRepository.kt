@@ -14,7 +14,7 @@ import java.util.UUID
 class WorkspaceRepository(
     private val context: Context,
     private val database: AppDatabase,
-    private val bridge: WorkspaceLlmBridge
+    private val llmRouter: com.example.llm.LlmRouter
 ) {
     private val tag = "WorkspaceRepository"
     private val settingsManager = SettingsManager(context)
@@ -228,7 +228,7 @@ class WorkspaceRepository(
                 Log.d(tag, "LLM Route attempt $attempt/$maxAttempts via routing selector: ${route.routingLog}")
                 
                 try {
-                    responseText = bridge.submitMessage(
+                    responseText = llmRouter.submitMessage(
                         chatHistory = chatHistory,
                         userMessage = userMsg,
                         systemPrompt = systemPrompt,
@@ -420,10 +420,13 @@ class WorkspaceRepository(
     }
 
     suspend fun transcribeAudioFile(audioFile: java.io.File): String {
-        return bridge.transcribeAudio(audioFile)
+        val audioBytes = audioFile.readBytes()
+        val sttPrompt = settingsManager.sttPrompt
+        return llmRouter.transcribeAudio(audioBytes, sttPrompt)
     }
 
     suspend fun polishAudioAndTxt(audioFile: java.io.File, rawSTT: String): String {
-        return bridge.polishAudioAndTxt(audioFile, rawSTT)
+        val audioBytes = if (audioFile.exists() && audioFile.length() > 0) audioFile.readBytes() else null
+        return llmRouter.polishAudioAndTxt(audioBytes, rawSTT)
     }
 }

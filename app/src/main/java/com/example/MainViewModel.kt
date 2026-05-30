@@ -23,8 +23,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Dependencies
     val settingsManager = SettingsManager(context)
     private val database = AppDatabase.getDatabase(context)
-    private val bridge = WorkspaceLlmBridge(context, settingsManager)
-    private val repository = WorkspaceRepository(context, database, bridge)
+    val credentialStore = com.example.data.EncryptedCredentialStore(context)
+    private val defaultClient = okhttp3.OkHttpClient.Builder().build()
+    private val mcpClient = com.example.mcp.McpClientImpl(defaultClient, credentialStore)
+    val mcpRepository = com.example.mcp.McpRepository(database.mcpDao(), mcpClient, credentialStore)
+    private val llmRouter = com.example.llm.LlmRouter(context, settingsManager, mcpRepository)
+    private val repository = WorkspaceRepository(context, database, llmRouter)
 
     private val recorderHelper = AudioRecorderHelper(context, viewModelScope)
     private val playerHelper = AudioPlayerHelper()
@@ -290,6 +294,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isRecordingVoiceQuestion.value = false
         activeRecordingFile = null
         
+        val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+            action = RecordingService.ACTION_STOP
+        }
+        context.startService(serviceIntent)
+        
         fileRecorded?.let {
             if (it.exists()) {
                 it.delete()
@@ -322,6 +331,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         recordAutoStoppedDueToSilence.value = false
         val fileRecorded = recorderHelper.startRecording()
         if (fileRecorded != null) {
+            val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+                action = RecordingService.ACTION_START
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+
             activeRecordingFile = fileRecorded
             recordingStatus.value = RecordingStatus.RECORDING
             isRecordingAudio.value = true
@@ -372,6 +390,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         recorderHelper.stopRecording()
         localSpeechHelper?.stopListening()
         localSpeechHelper = null
+
+        val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+            action = RecordingService.ACTION_STOP
+        }
+        context.startService(serviceIntent)
     }
 
     private fun saveLiveTranscriptToDisk(text: String) {

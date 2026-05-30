@@ -16,7 +16,20 @@ import java.util.concurrent.TimeUnit
 data class GenerateContentRequest(
     val contents: List<Content>,
     val generationConfig: GenerationConfig? = null,
-    val systemInstruction: Content? = null
+    val systemInstruction: Content? = null,
+    val tools: List<Tool>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class Tool(
+    val functionDeclarations: List<FunctionDeclaration>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class FunctionDeclaration(
+    val name: String,
+    val description: String,
+    val parameters: Map<String, Any>? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -28,7 +41,21 @@ data class Content(
 @JsonClass(generateAdapter = true)
 data class Part(
     val text: String? = null,
-    val inlineData: InlineData? = null
+    val inlineData: InlineData? = null,
+    val functionCall: FunctionCall? = null,
+    val functionResponse: FunctionResponse? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class FunctionCall(
+    val name: String,
+    val args: Map<String, Any>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class FunctionResponse(
+    val name: String,
+    val response: Map<String, Any>? = null
 )
 
 @JsonClass(generateAdapter = true)
