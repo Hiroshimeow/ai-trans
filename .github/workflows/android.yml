@@ -7,7 +7,35 @@ on:
     branches: [ "main" ]
 
 jobs:
+  hygiene:
+    name: Repo Hygiene & Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for Temp Files
+        run: |
+          if [ -n "$(find . -maxdepth 1 -name 'extract*.js' -o -name 'imports.txt')" ]; then
+            echo "Error: Repo contains temporary extraction files (extract*.js or imports.txt)."
+            exit 1
+          fi
+          
+      - name: Check for Tracked Build Artifacts
+        run: |
+          if git ls-files | grep -E '\.apk$|\.aab$|^\.build-outputs/'; then
+            echo "Error: Repo contains tracked build artifacts or APKs. These should be gitignored."
+            exit 1
+          fi
+
+      - name: Secret Scan (Basic)
+        run: |
+          if git grep -E -i 'AIza[0-9A-Za-z-_]{35}|sk-[A-Za-z0-9]{48}|ghp_[A-Za-z0-9]{36}|xoxb-[A-Za-z0-9\-]+'; then
+            echo "Error: Potential secrets found in source code (e.g. Gemini, OpenAI, GitHub, Slack tokens)."
+            exit 1
+          fi
+
   build:
+    needs: hygiene
     runs-on: ubuntu-latest
 
     steps:
@@ -20,5 +48,15 @@ jobs:
         cache: gradle
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    - name: Run Tests & Build APK
+    - name: Run Tests & Build Debug APK
       run: ./gradlew :app:testDebugUnitTest :app:assembleDebug
+    
+    # Check if a release build can at least be assembled (minus signing) for integrity
+    - name: Build unsigned Release APK (Verification)
+      run: ./gradlew :app:assembleRelease
+      
+    - name: Upload Debug APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug-apk
+        path: app/build/outputs/apk/debug/app-debug.apk

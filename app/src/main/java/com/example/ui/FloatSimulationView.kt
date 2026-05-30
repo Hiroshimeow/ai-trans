@@ -59,30 +59,13 @@ fun FloatSimulationView(viewModel: MainViewModel) {
     val isTranscribing by viewModel.isTranscribingAudio.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val recordAudioGranted = permissions[android.Manifest.permission.RECORD_AUDIO] ?: false
-        if (!recordAudioGranted) {
-            android.widget.Toast.makeText(context, "Quyền ghi âm (Microphone) bị từ chối. Vui lòng cấp quyền trong Cài đặt hệ thống để tiếp tục.", android.widget.Toast.LENGTH_LONG).show()
-        } else {
+    val permissionRequester = com.example.ui.components.rememberRecordingPermissionRequester { action ->
+        if (action == com.example.ui.components.RecordingAction.QuickVoice) {
             viewModel.toggleAudioRecording()
         }
     }
-
-    val triggerFloatRecordingSafely = {
-        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (hasMic) {
-            viewModel.toggleAudioRecording()
-        } else {
-            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO)
-            }
-            permissionLauncher.launch(perms)
-        }
-    }
+    
+    val triggerFloatRecordingSafely = { permissionRequester.request(com.example.ui.components.RecordingAction.QuickVoice) }
 
     Column(
         modifier = Modifier

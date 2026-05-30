@@ -233,11 +233,8 @@ class WorkspaceRepository(
                         userMessage = userMsg,
                         systemPrompt = systemPrompt,
                         attachments = selectedAttachments,
-                        sessionEndpointUrl = route.provider.endpointUrl,
-                        sessionModelName = route.selectedModel,
-                        sessionApiProvider = route.provider.id,
-                        sessionApiKey = route.provider.apiKey,
-                        sessionMaxTokens = route.provider.maxTokens
+                        provider = route.provider,
+                        selectedModel = route.selectedModel
                     )
                     // Success! Log and break from retry loop
                     Log.d(tag, "LLM Route execution succeeded on attempt $attempt with provider: ${route.provider.id}")

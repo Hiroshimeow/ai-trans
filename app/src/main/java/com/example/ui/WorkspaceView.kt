@@ -108,67 +108,18 @@ fun WorkspaceMainView(viewModel: MainViewModel) {
     var showSettingsDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    var pendingRecordAction by remember { mutableStateOf<String?>(null) }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val recordAudioGranted = permissions[android.Manifest.permission.RECORD_AUDIO] ?: false
-        if (!recordAudioGranted) {
-            android.widget.Toast.makeText(context, "Quyền ghi âm (Microphone) bị từ chối. Vui lòng cấp quyền trong Cài đặt hệ thống để tiếp tục.", android.widget.Toast.LENGTH_LONG).show()
-        } else {
-            when (pendingRecordAction) {
-                "voice_question" -> viewModel.toggleVoiceQuestionRecording()
-                "meeting" -> viewModel.startMeetingRecording()
-                else -> viewModel.toggleAudioRecording()
-            }
-        }
-        pendingRecordAction = null
-    }
-
-    val triggerRecordingSafely = {
-        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (hasMic) {
-            viewModel.toggleAudioRecording()
-        } else {
-            pendingRecordAction = "normal"
-            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO)
-            }
-            permissionLauncher.launch(perms)
+    val permissionRequester = com.example.ui.components.rememberRecordingPermissionRequester { action ->
+        when (action) {
+            com.example.ui.components.RecordingAction.QuickVoice -> viewModel.toggleAudioRecording()
+            com.example.ui.components.RecordingAction.VoiceQuestion -> viewModel.toggleVoiceQuestionRecording()
+            com.example.ui.components.RecordingAction.Meeting -> viewModel.startMeetingRecording()
         }
     }
 
-    val triggerVoiceQuestionSafely = {
-        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (hasMic) {
-            viewModel.toggleVoiceQuestionRecording()
-        } else {
-            pendingRecordAction = "voice_question"
-            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO)
-            }
-            permissionLauncher.launch(perms)
-        }
-    }
+    val triggerRecordingSafely = { permissionRequester.request(com.example.ui.components.RecordingAction.QuickVoice) }
+    val triggerVoiceQuestionSafely = { permissionRequester.request(com.example.ui.components.RecordingAction.VoiceQuestion) }
+    val triggerMeetingSafely = { permissionRequester.request(com.example.ui.components.RecordingAction.Meeting) }
 
-    val triggerMeetingSafely = {
-        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (hasMic) {
-            viewModel.startMeetingRecording()
-        } else {
-            pendingRecordAction = "meeting"
-            val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                arrayOf(android.Manifest.permission.RECORD_AUDIO)
-            }
-            permissionLauncher.launch(perms)
-        }
-    }
 
     val activeSessionId by viewModel.activeSessionId.collectAsStateWithLifecycle()
     val sessions by viewModel.allSessions.collectAsStateWithLifecycle()

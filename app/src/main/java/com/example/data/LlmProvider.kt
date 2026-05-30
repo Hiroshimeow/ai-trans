@@ -3,13 +3,21 @@ package com.example.data
 import org.json.JSONArray
 import org.json.JSONObject
 
+enum class ProviderProtocol {
+    GeminiGenerateContent,
+    OpenAiChatCompletions,
+    OllamaChatCompletions,
+    CustomHttp
+}
+
 data class LlmProvider(
     val id: String,
     val name: String,
     val endpointUrl: String,
     val apiKey: String,
     val models: List<String>,
-    val maxTokens: Int = 4096
+    val maxTokens: Int = 4096,
+    val protocol: ProviderProtocol = ProviderProtocol.CustomHttp
 ) {
     fun toJsonObject(): JSONObject {
         val obj = JSONObject()
@@ -23,6 +31,7 @@ data class LlmProvider(
         obj.put("models", modelsArr)
         
         obj.put("maxTokens", maxTokens)
+        obj.put("protocol", protocol.name)
         return obj
     }
 
@@ -44,7 +53,13 @@ data class LlmProvider(
                 }
             }
             val maxTokens = obj.optInt("maxTokens", 4096)
-            return LlmProvider(id, name, endpointUrl, apiKey, models, maxTokens)
+            val protocolStr = obj.optString("protocol", ProviderProtocol.CustomHttp.name)
+            val protocol = try {
+                ProviderProtocol.valueOf(protocolStr)
+            } catch (e: Exception) {
+                if (id == "gemini") ProviderProtocol.GeminiGenerateContent else ProviderProtocol.OpenAiChatCompletions
+            }
+            return LlmProvider(id, name, endpointUrl, apiKey, models, maxTokens, protocol)
         }
 
         fun getDefaultProviders(): List<LlmProvider> {
@@ -60,7 +75,8 @@ data class LlmProvider(
                         "gemini-1.5-flash",
                         "gemini-1.5-pro"
                     ),
-                    maxTokens = 4096
+                    maxTokens = 4096,
+                    protocol = ProviderProtocol.GeminiGenerateContent
                 )
             )
         }

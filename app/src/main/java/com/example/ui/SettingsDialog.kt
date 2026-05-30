@@ -425,33 +425,64 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
-                Button(
-                    onClick = {
-                        val newId = "provider_" + System.currentTimeMillis()
-                        val newProvider = LlmProvider(
-                            id = newId,
-                            name = "OpenRouter Custom",
-                            endpointUrl = "https://openrouter.ai/api/v1",
-                            apiKey = "",
-                            models = listOf("deepseek/deepseek-chat", "meta-llama/llama-3-70b-instruct"),
-                            maxTokens = 4096
+                
+                var showAddProviderMenu by remember { mutableStateOf(false) }
+                
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { showAddProviderMenu = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add New Provider Setup", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    
+                    DropdownMenu(
+                        expanded = showAddProviderMenu,
+                        onDismissRequest = { showAddProviderMenu = false }
+                    ) {
+                        val addTemplate = { name: String, endpointUrl: String, models: List<String>, protocol: com.example.data.ProviderProtocol ->
+                            showAddProviderMenu = false
+                            val newId = "provider_" + System.currentTimeMillis()
+                            val newProvider = LlmProvider(
+                                id = newId,
+                                name = name,
+                                endpointUrl = endpointUrl,
+                                apiKey = "",
+                                models = models,
+                                maxTokens = 4096,
+                                protocol = protocol
+                            )
+                            providersList = providersList + newProvider
+                            editingProviderId = newId
+                            editName = newProvider.name
+                            editEndpoint = newProvider.endpointUrl
+                            editApiKey = newProvider.apiKey
+                            editModels = newProvider.models.joinToString(", ")
+                            editMaxTokens = newProvider.maxTokens.toString()
+                        }
+                        
+                        DropdownMenuItem(
+                            text = { Text("OpenAI-compatible") },
+                            onClick = { addTemplate("OpenAI Compatible", "https://api.openai.com/v1", listOf("gpt-4o", "gpt-4o-mini"), com.example.data.ProviderProtocol.OpenAiChatCompletions) }
                         )
-                        providersList = providersList + newProvider
-                        editingProviderId = newId
-                        editName = newProvider.name
-                        editEndpoint = newProvider.endpointUrl
-                        editApiKey = newProvider.apiKey
-                        editModels = newProvider.models.joinToString(", ")
-                        editMaxTokens = newProvider.maxTokens.toString()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(vertical = 10.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add New Provider Setup", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        DropdownMenuItem(
+                            text = { Text("OpenRouter") },
+                            onClick = { addTemplate("OpenRouter", "https://openrouter.ai/api/v1", listOf("deepseek/deepseek-chat", "meta-llama/llama-3-70b-instruct"), com.example.data.ProviderProtocol.CustomHttp) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Ollama (Local)") },
+                            onClick = { addTemplate("Ollama Local", "http://10.0.2.2:11434/v1", listOf("llama3"), com.example.data.ProviderProtocol.OllamaChatCompletions) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Custom Gemini Endpoint") },
+                            onClick = { addTemplate("Custom Gemini", "", listOf("gemini-2.5-flash", "gemini-1.5-pro"), com.example.data.ProviderProtocol.GeminiGenerateContent) }
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))

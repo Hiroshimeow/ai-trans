@@ -36,37 +36,33 @@ class WorkspaceLlmBridge(
         userMessage: MessageEntity,
         systemPrompt: String,
         attachments: List<AttachmentEntity>,
-        sessionEndpointUrl: String? = null,
-        sessionModelName: String? = null,
-        sessionApiProvider: String? = null,
-        sessionApiKey: String? = null,
-        sessionMaxTokens: Int? = null
+        provider: LlmProvider,
+        selectedModel: String? = null
     ): String = withContext(Dispatchers.IO) {
-        val activeProvider = if (!sessionApiProvider.isNullOrEmpty()) sessionApiProvider else settingsManager.activeProviderId
-
-        if (activeProvider != "gemini") {
-            val endpointUrl = if (!sessionEndpointUrl.isNullOrEmpty()) sessionEndpointUrl else settingsManager.customEndpointUrl
-            val modelName = if (!sessionModelName.isNullOrEmpty()) sessionModelName else settingsManager.customModelName
-            val apiKey = if (!sessionApiKey.isNullOrEmpty()) sessionApiKey else settingsManager.customApiKey
-            val maxTokens = sessionMaxTokens ?: 4096
-
-            return@withContext submitOpenAiCompatibleMessage(
-                chatHistory = chatHistory,
-                userMessage = userMessage,
-                systemPrompt = systemPrompt,
-                attachments = attachments,
-                endpointUrl = endpointUrl,
-                modelName = modelName,
-                apiKey = apiKey,
-                maxTokens = maxTokens
-            )
-        }
-
-        // Default Gemini flow
-        val model = if (!sessionModelName.isNullOrEmpty()) sessionModelName else settingsManager.chatModel
-        val apiKey = if (!sessionApiKey.isNullOrEmpty()) sessionApiKey else getApiKey()
-
-        val contents = mutableListOf<Content>()
+        val modelToUse = if (!selectedModel.isNullOrEmpty()) selectedModel else if (provider.models.isNotEmpty()) provider.models.first() else "gpt-4o"
+        
+        when (provider.protocol) {
+            ProviderProtocol.OpenAiChatCompletions,
+            ProviderProtocol.OllamaChatCompletions,
+            ProviderProtocol.CustomHttp -> {
+                val apiKey = provider.apiKey
+                val maxTokens = provider.maxTokens
+                
+                return@withContext submitOpenAiCompatibleMessage(
+                    chatHistory = chatHistory,
+                    userMessage = userMessage,
+                    systemPrompt = systemPrompt,
+                    attachments = attachments,
+                    endpointUrl = provider.endpointUrl,
+                    modelName = modelToUse,
+                    apiKey = apiKey,
+                    maxTokens = maxTokens
+                )
+            }
+            ProviderProtocol.GeminiGenerateContent -> {
+                val apiKey = if (provider.apiKey.isNotEmpty()) provider.apiKey else getApiKey()
+                
+                val contents = mutableListOf<Content>()
 
         // 1. Build conversation history
         chatHistory.forEach { msg ->
@@ -114,7 +110,7 @@ class WorkspaceLlmBridge(
             generationConfig = GenerationConfig(temperature = 0.4f)
         )
 
-        val response = GeminiRetrofitClient.service.generateContent(model, apiKey, request)
+        val response = GeminiRetrofitClient.service.generateContent(modelToUse, apiKey, request)
         val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
         if (responseText != null) {
             return@withContext responseText
@@ -122,6 +118,8 @@ class WorkspaceLlmBridge(
             val errMsg = response.error?.message ?: "Received empty response from Gemini API"
             throw IOException("Gemini API Error: $errMsg")
         }
+            } // close GeminiGenerateContent
+        } // end when
     }
 
     private suspend fun submitOpenAiCompatibleMessage(
