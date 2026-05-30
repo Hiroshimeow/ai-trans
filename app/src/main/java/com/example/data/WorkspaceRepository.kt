@@ -323,6 +323,14 @@ class WorkspaceRepository(
         database.promptSkillDao().updateSkillSelection(id, selected)
     }
 
+    suspend fun toggleSkillAlwaysOn(id: String, alwaysOn: Boolean) = withContext(Dispatchers.IO) {
+        database.promptSkillDao().updateSkillAlwaysOn(id, alwaysOn)
+    }
+
+    suspend fun updateSkill(id: String, title: String, content: String) = withContext(Dispatchers.IO) {
+        database.promptSkillDao().updateSkillTitleAndContent(id, title, content)
+    }
+
     suspend fun addCustomSkill(title: String, content: String) = withContext(Dispatchers.IO) {
         val skill = PromptSkillEntity(
             id = UUID.randomUUID().toString(),

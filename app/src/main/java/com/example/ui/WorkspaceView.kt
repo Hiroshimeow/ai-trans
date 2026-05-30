@@ -10,6 +10,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -395,6 +396,12 @@ fun SidebarPanel(
     var showSessionsCollapse by remember { mutableStateOf(true) }
     var showSkillsCollapse by remember { mutableStateOf(true) }
 
+    var skillToEdit by remember { mutableStateOf<com.example.data.PromptSkillEntity?>(null) }
+    var skillToView by remember { mutableStateOf<com.example.data.PromptSkillEntity?>(null) }
+    var skillToDelete by remember { mutableStateOf<com.example.data.PromptSkillEntity?>(null) }
+    var sessionToDeleteId by remember { mutableStateOf<String?>(null) }
+    var expandedSkillId by remember { mutableStateOf<String?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -501,10 +508,10 @@ fun SidebarPanel(
                                 .fillMaxWidth()
                                 .padding(vertical = 2.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSelected) SurfaceSlate else Color.Transparent)
+                                .background(if (isSelected) ElectricBlue.copy(alpha = 0.12f) else Color.Transparent)
                                 .border(
                                     width = 1.dp,
-                                    color = if (isSelected) BorderSlate else Color.Transparent,
+                                    color = if (isSelected) ElectricBlue else Color.Transparent,
                                     shape = RoundedCornerShape(6.dp)
                                 )
                                 .clickable { viewModel.selectSession(s.id) }
@@ -519,21 +526,21 @@ fun SidebarPanel(
                                 Icon(
                                     Icons.Default.Chat,
                                     contentDescription = null,
-                                    tint = if (isSelected) GlowCyan else SlateTextSecondary,
+                                    tint = if (isSelected) ElectricBlue else SlateTextSecondary,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = s.title,
                                     fontSize = 13.sp,
-                                    color = if (isSelected) Color.White else SlateTextSecondary,
+                                    color = if (isSelected) ElectricBlue else SlateTextSecondary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
                             if (sessions.size > 1) {
                                 IconButton(
-                                    onClick = { viewModel.deleteSession(s.id) },
+                                    onClick = { sessionToDeleteId = s.id },
                                     modifier = Modifier.size(18.dp)
                                 ) {
                                     Icon(
@@ -617,12 +624,14 @@ fun SidebarPanel(
                 }
 
                 skills.forEach { p ->
+                    val isSkillActive = p.selected || p.alwaysOn
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 2.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (p.selected) SurfaceSlate else Color.Transparent)
+                            .background(if (isSkillActive) ElectricBlue.copy(alpha = 0.12f) else Color.Transparent)
+                            .border(width = 1.dp, color = if (isSkillActive) ElectricBlue.copy(alpha = 0.3f) else Color.Transparent, shape = RoundedCornerShape(6.dp))
                             .clickable { viewModel.toggleSkill(p.id, !p.selected) }
                             .padding(vertical = 4.dp, horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -631,19 +640,30 @@ fun SidebarPanel(
                             checked = p.selected,
                             onCheckedChange = { viewModel.toggleSkill(p.id, it) },
                             colors = CheckboxDefaults.colors(
-                                checkedColor = GlowCyan,
+                                checkedColor = ElectricBlue,
                                 uncheckedColor = BorderSlate
                             ),
                             modifier = Modifier.scale(0.85f)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                p.title,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (p.selected) Color.White else SlateTextSecondary
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    p.title,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isSkillActive) ElectricBlue else Color(0xFF1B1B1F)
+                                )
+                                if (p.alwaysOn) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Default.PushPin,
+                                        contentDescription = "Always On",
+                                        tint = ElectricBlue,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 p.content,
                                 fontSize = 10.sp,
@@ -652,23 +672,114 @@ fun SidebarPanel(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        if (!p.builtIn) {
+                        
+                        Box {
                             IconButton(
-                                onClick = { viewModel.deleteSkill(p.id) },
-                                modifier = Modifier.size(20.dp)
+                                onClick = { expandedSkillId = p.id },
+                                modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "DeleteSkill",
-                                    tint = CoralRed.copy(alpha = 0.8f),
-                                    modifier = Modifier.size(12.dp)
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Options",
+                                    tint = SlateTextSecondary,
+                                    modifier = Modifier.size(14.dp)
                                 )
+                            }
+                            DropdownMenu(
+                                expanded = expandedSkillId == p.id,
+                                onDismissRequest = { expandedSkillId = null },
+                                modifier = Modifier.background(SurfaceSlate)
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(
+                                                checked = p.alwaysOn,
+                                                onCheckedChange = null,
+                                                colors = CheckboxDefaults.colors(checkedColor = ElectricBlue),
+                                                modifier = Modifier.scale(0.85f)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Always On", fontSize = 12.sp, color = Color(0xFF1B1B1F))
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.toggleSkillAlwaysOn(p.id, !p.alwaysOn)
+                                        expandedSkillId = null
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("View details", fontSize = 12.sp, color = Color(0xFF1B1B1F)) },
+                                    onClick = {
+                                        skillToView = p
+                                        expandedSkillId = null
+                                    }
+                                )
+                                if (!p.builtIn) {
+                                    DropdownMenuItem(
+                                        text = { Text("Edit skill", fontSize = 12.sp, color = Color(0xFF1B1B1F)) },
+                                        onClick = {
+                                            skillToEdit = p
+                                            expandedSkillId = null
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Delete skill", fontSize = 12.sp, color = CoralRed) },
+                                        onClick = {
+                                            skillToDelete = p
+                                            expandedSkillId = null
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    sessionToDeleteId?.let { id ->
+        val sessionTitle = sessions.find { it.id == id }?.title ?: "session"
+        ConfirmDeleteDialog(
+            title = "Delete Conversation",
+            message = "Are you sure you want to permanently delete \"$sessionTitle\"? This action cannot be undone.",
+            onDismiss = { sessionToDeleteId = null },
+            onConfirm = {
+                viewModel.deleteSession(id)
+                sessionToDeleteId = null
+            }
+        )
+    }
+
+    skillToEdit?.let { skill ->
+        EditCustomSkillDialog(
+            skill = skill,
+            onDismiss = { skillToEdit = null },
+            onConfirmEdit = { title, content ->
+                viewModel.updateSkill(skill.id, title, content)
+                skillToEdit = null
+            }
+        )
+    }
+
+    skillToView?.let { skill ->
+        ViewSkillDialog(
+            skill = skill,
+            onDismiss = { skillToView = null }
+        )
+    }
+
+    skillToDelete?.let { skill ->
+        ConfirmDeleteDialog(
+            title = "Delete Skill",
+            message = "Are you sure you want to permanently delete \"${skill.title}\"? This action cannot be undone.",
+            onDismiss = { skillToDelete = null },
+            onConfirm = {
+                viewModel.deleteSkill(skill.id)
+                skillToDelete = null
+            }
+        )
     }
 }
 
@@ -1100,7 +1211,7 @@ fun ChatPanel(
                     .fillMaxWidth()
                     .padding(vertical = 6.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color.Black.copy(alpha = 0.4f))
+                    .background(Color(0xFF1E1E24))
                     .border(1.dp, BorderSlate, RoundedCornerShape(10.dp))
                     .padding(10.dp)
             ) {
@@ -1145,6 +1256,17 @@ fun ChatPanel(
                                     fontSize = 10.sp,
                                     color = SlateTextSecondary
                                 )
+                                val liveSpeechResultVal by viewModel.liveSpeechResult.collectAsStateWithLifecycle()
+                                if (liveSpeechResultVal.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Live trans: $liveSpeechResultVal",
+                                        fontSize = 11.sp,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1575,26 +1697,87 @@ fun MeetingTabContent(viewModel: MainViewModel, onStartMeetingClick: () -> Unit)
                     }
                 }
             } else {
+                val sentences = remember(liveTranscript) {
+                    liveTranscript.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+                }
+                val lazyListState = rememberLazyListState()
+                LaunchedEffect(sentences.size) {
+                    if (sentences.isNotEmpty()) {
+                        lazyListState.animateScrollToItem(sentences.size - 1)
+                    }
+                }
+
                 Column(modifier = Modifier.fillMaxSize()) {
-                    Box(
+                    LazyColumn(
+                        state = lazyListState,
                         modifier = Modifier
                             .weight(1f)
-                            .verticalScroll(scrollState)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = liveTranscript,
-                            fontSize = 12.sp,
-                            color = Color.White,
-                            lineHeight = 18.sp
-                        )
+                        items(sentences.size) { index ->
+                            val sentence = sentences[index]
+                            val isPrimary = index % 2 == 0
+                            val speaker = if (isPrimary) "Speaker 1 (User)" else "Speaker 2"
+                            
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isPrimary) ElectricBlue else GlowCyan),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = if (isPrimary) "1" else "2",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = CosmicDark
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = speaker,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isPrimary) ElectricBlue else GlowCyan
+                                    )
+                                }
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isPrimary) BorderSlate.copy(alpha = 0.3f) else SurfaceSlate
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(0.5.dp, BorderSlate.copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = sentence,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF1B1B1F),
+                                        modifier = Modifier.padding(8.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                     
                     Spacer(modifier = Modifier.height(4.dp))
                     
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Text("Chèn nội dung vào ô soạn thảo:", fontSize = 10.sp, color = SlateTextSecondary)
+                        Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
                             onClick = { viewModel.insertTranscriptIntoComposer(liveTranscript) },
                             modifier = Modifier.size(24.dp)
@@ -2210,9 +2393,10 @@ fun FloatSimulationView(viewModel: MainViewModel) {
 // ==========================================
 @Composable
 fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
-    val modelChoices = listOf("gemini-1.5-flash", "gemini-1.5-pro")
     val sttChoices = listOf(
         "gemini-2.5-flash-native-audio-preview-12-2025",
+        "gemini-2.5-flash-preview-tts",
+        "gemini-3.1-flash-live-preview",
         "gemini-1.5-flash"
     )
 
@@ -2247,6 +2431,9 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
         mutableStateOf(viewModel.settingsManager.activeProviderId)
     }
 
+    val activeProvider = providersList.find { it.id == activeProviderId } ?: providersList.firstOrNull { it.id == "gemini" } ?: providersList.first()
+    val modelChoices = activeProvider.models
+
     var routeRoundRobin by remember { mutableStateOf(viewModel.settingsManager.routingStrategyRoundRobin) }
     var routeStickyLimit by remember { mutableStateOf(viewModel.settingsManager.routingStrategyStickyLimit) }
     var routeComboRoundRobin by remember { mutableStateOf(viewModel.settingsManager.routingStrategyComboRoundRobin) }
@@ -2279,23 +2466,36 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 Divider(color = BorderSlate)
 
                 Spacer(modifier = Modifier.height(10.dp))
-                Text("Chat Core Model", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    modelChoices.forEach { m ->
-                        val isSelected = cModel == m
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSelected) ElectricBlue else BorderSlate)
-                                .clickable { cModel = m }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(m, fontSize = 11.sp, color = if (isSelected) Color.White else Color(0xFF1B1B1F), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                Text("Chat Core Model (của Provider đang chọn)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                Spacer(modifier = Modifier.height(6.dp))
+                modelChoices.chunked(2).forEach { rowModels ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        rowModels.forEach { m ->
+                            val isSelected = cModel == m
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) ElectricBlue else BorderSlate.copy(alpha = 0.5f))
+                                    .clickable { cModel = m }
+                                    .padding(vertical = 8.dp, horizontal = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = m,
+                                    fontSize = 11.sp,
+                                    color = if (isSelected) Color.White else Color(0xFF1B1B1F),
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        if (rowModels.size < 2) {
+                            Spacer(modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -2411,13 +2611,16 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     RadioButton(
                                         selected = activeProviderId == provider.id,
-                                        onClick = { activeProviderId = provider.id },
+                                        onClick = { 
+                                            activeProviderId = provider.id 
+                                            cModel = provider.models.firstOrNull() ?: ""
+                                        },
                                         colors = RadioButtonDefaults.colors(selectedColor = GlowCyan)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Column {
                                         Text(provider.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        Text("Models Count: ${provider.models.size}", fontSize = 10.sp, color = SlateTextSecondary)
+                                        Text("Models Count: ${provider.models.size}", fontSize = 10.sp, color = Color(0xFFC4C6D0))
                                     }
                                 }
                                 Row {
@@ -2465,16 +2668,18 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color(0xFF1B1B1F), unfocusedTextColor = Color(0xFF1B1B1F))
                                 )
 
-                                Spacer(modifier = Modifier.height(6.dp))
-                                OutlinedTextField(
-                                    value = editEndpoint,
-                                    onValueChange = { editEndpoint = it },
-                                    label = { Text("Endpoint URL", fontSize = 10.sp) },
-                                    placeholder = { Text("https://api.openai.com/v1", fontSize = 10.sp) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textStyle = TextStyle(fontSize = 11.sp),
-                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color(0xFF1B1B1F), unfocusedTextColor = Color(0xFF1B1B1F))
-                                )
+                                if (provider.id != "gemini") {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    OutlinedTextField(
+                                        value = editEndpoint,
+                                        onValueChange = { editEndpoint = it },
+                                        label = { Text("Endpoint URL", fontSize = 10.sp) },
+                                        placeholder = { Text("https://api.openai.com/v1", fontSize = 10.sp) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textStyle = TextStyle(fontSize = 11.sp),
+                                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color(0xFF1B1B1F), unfocusedTextColor = Color(0xFF1B1B1F))
+                                    )
+                                }
 
                                 Spacer(modifier = Modifier.height(6.dp))
                                 OutlinedTextField(
@@ -2506,7 +2711,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                         text = "Max Token Limits: ${String.format(Locale.US, "%,d", maxTokensCoerced.toInt())}",
                                         fontSize = 11.sp, 
                                         fontWeight = FontWeight.Bold, 
-                                        color = SlateTextSecondary
+                                        color = Color(0xFFE2E2E9)
                                     )
                                     Slider(
                                         value = maxTokensCoerced,
@@ -2691,7 +2896,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Round Robin Strategy", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text("Cycle through accounts systematically for queries", fontSize = 9.sp, color = SlateTextSecondary)
+                                Text("Cycle through accounts systematically for queries", fontSize = 9.sp, color = Color(0xFFC4C6D0))
                             }
                             Switch(
                                 checked = routeRoundRobin,
@@ -2713,7 +2918,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Sticky Query Limit", fontSize = 11.sp, color = SlateTextSecondary)
+                                Text("Sticky Query Limit", fontSize = 11.sp, color = Color(0xFFC4C6D0))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(
                                         onClick = { routeStickyLimit = (routeStickyLimit - 1).coerceAtLeast(1) },
@@ -2750,7 +2955,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Combo Round Robin", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text("Cycle over Account-Model pairs instead of provider-only selection", fontSize = 9.sp, color = SlateTextSecondary)
+                                Text("Cycle over Account-Model pairs instead of provider-only selection", fontSize = 9.sp, color = Color(0xFFC4C6D0))
                             }
                             Switch(
                                 checked = routeComboRoundRobin,
@@ -2772,7 +2977,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Combo Sticky Limit", fontSize = 11.sp, color = SlateTextSecondary)
+                                Text("Combo Sticky Limit", fontSize = 11.sp, color = Color(0xFFC4C6D0))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(
                                         onClick = { routeComboStickyLimit = (routeComboStickyLimit - 1).coerceAtLeast(1) },
@@ -3094,3 +3299,193 @@ fun AddCustomSkillDialog(onDismiss: () -> Unit, onConfirmAdd: (String, String) -
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditCustomSkillDialog(
+    skill: com.example.data.PromptSkillEntity,
+    onDismiss: () -> Unit,
+    onConfirmEdit: (String, String) -> Unit
+) {
+    var title by remember { mutableStateOf(skill.title) }
+    var content by remember { mutableStateOf(skill.content) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .padding(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceSlate),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text("Edit Prompt Skill", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GlowCyan)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Skill Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color(0xFF1B1B1F),
+                        unfocusedTextColor = Color(0xFF1B1B1F),
+                        focusedBorderColor = GlowCyan,
+                        unfocusedBorderColor = BorderSlate
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = { content = it },
+                    label = { Text("System Prompt Guidance Content") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color(0xFF1B1B1F),
+                        unfocusedTextColor = Color(0xFF1B1B1F),
+                        focusedBorderColor = GlowCyan,
+                        unfocusedBorderColor = BorderSlate
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = SlateTextSecondary)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onConfirmEdit(title, content) },
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                    ) {
+                        Text("Save Change", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ViewSkillDialog(
+    skill: com.example.data.PromptSkillEntity,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .padding(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceSlate),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(skill.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GlowCyan)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                if (skill.alwaysOn) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .background(ActiveGreen.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(Icons.Default.PushPin, contentDescription = null, tint = ActiveGreen, modifier = Modifier.size(10.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Always On", fontSize = 10.sp, color = ActiveGreen, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .background(CosmicDark, RoundedCornerShape(6.dp))
+                        .border(1.dp, BorderSlate, RoundedCornerShape(6.dp))
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp)
+                ) {
+                    Text(skill.content, fontSize = 12.sp, color = Color(0xFF1B1B1F), fontFamily = FontFamily.Monospace)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                    ) {
+                        Text("Close", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ConfirmDeleteDialog(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceSlate),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = CoralRed)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(message, fontSize = 13.sp, color = Color(0xFF1B1B1F))
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = SlateTextSecondary)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = onConfirm,
+                        colors = ButtonDefaults.buttonColors(containerColor = CoralRed)
+                    ) {
+                        Text("Delete", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+

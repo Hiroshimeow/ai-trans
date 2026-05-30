@@ -127,6 +127,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun createSession(title: String) {
+        val currentMsgs = activeSessionMessages.value
+        val currentId = _activeSessionId.value
+        if (currentId != null && currentMsgs.isEmpty()) {
+            // Current session is already empty, no need to create a new one. Just keep it.
+            return
+        }
         viewModelScope.launch {
             val trimmedTitle = title.trim().ifEmpty { "New Workspace Session" }
             val newId = repository.createNewSession(trimmedTitle)
@@ -162,7 +168,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 composerText.value = ""
 
                 // Assemble selected prompt skills into combined system prompt string
-                val activeSkills = allSkills.value.filter { it.selected }
+                val activeSkills = allSkills.value.filter { it.selected || it.alwaysOn }
                 val systemPrompt = if (activeSkills.isNotEmpty()) {
                     activeSkills.joinToString("\n\n") { "--- ${it.title} ---\n${it.content}" }
                 } else {
@@ -182,6 +188,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleSkill(skillId: String, selected: Boolean) {
         viewModelScope.launch {
             repository.toggleSkillSelection(skillId, selected)
+        }
+    }
+
+    fun toggleSkillAlwaysOn(skillId: String, alwaysOn: Boolean) {
+        viewModelScope.launch {
+            repository.toggleSkillAlwaysOn(skillId, alwaysOn)
+        }
+    }
+
+    fun updateSkill(skillId: String, title: String, content: String) {
+        if (title.isBlank() || content.isBlank()) return
+        viewModelScope.launch {
+            repository.updateSkill(skillId, title.trim(), content.trim())
         }
     }
 
@@ -443,7 +462,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun sendVoiceQuestionMessage(transcript: String) {
         val sessionId = _activeSessionId.value ?: return
         try {
-            val activeSkills = allSkills.value.filter { it.selected }
+            val activeSkills = allSkills.value.filter { it.selected || it.alwaysOn }
             val systemPrompt = if (activeSkills.isNotEmpty()) {
                 activeSkills.joinToString("\n\n") { "--- ${it.title} ---\n${it.content}" }
             } else {

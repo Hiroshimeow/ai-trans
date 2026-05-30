@@ -56,7 +56,8 @@ data class PromptSkillEntity(
     val content: String,
     val selected: Boolean,
     val builtIn: Boolean,
-    val createdAt: Long
+    val createdAt: Long,
+    val alwaysOn: Boolean = false
 )
 
 @Entity(tableName = "recordings")
@@ -157,6 +158,12 @@ interface PromptSkillDao {
 
     @Query("UPDATE prompt_skills SET selected = :selected WHERE id = :id")
     suspend fun updateSkillSelection(id: String, selected: Boolean)
+
+    @Query("UPDATE prompt_skills SET alwaysOn = :alwaysOn WHERE id = :id")
+    suspend fun updateSkillAlwaysOn(id: String, alwaysOn: Boolean)
+
+    @Query("UPDATE prompt_skills SET title = :title, content = :content WHERE id = :id")
+    suspend fun updateSkillTitleAndContent(id: String, title: String, content: String)
 
     @Query("DELETE FROM prompt_skills WHERE id = :id")
     suspend fun deleteSkillById(id: String)
@@ -282,7 +289,7 @@ interface TranscriptJobDao {
         TranscriptSegmentEntity::class,
         TranscriptJobEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(DatabaseConverters::class)
@@ -299,6 +306,12 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `prompt_skills` ADD COLUMN `alwaysOn` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
 
         val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -367,7 +380,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "screen_chat_workspace_db"
                 )
-                .addMigrations(MIGRATION_3_4)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance
