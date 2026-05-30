@@ -1,50 +1,37 @@
 # Screen Chat Workspace (Screens-Trans-Chatbot)
 
-Screen Chat Workspace is a high-performance Android application engineered to unify mobile screen interaction, multi-provider LLM integration, speech processing, and continuous meeting synchronization. It consists of an In-app Floating HUD Mode for quick microphone / voice capture and a comprehensive Screen Chat Workspace (Core UI) for full-session context management, attachment tracking, and customizable routing.
+Screen Chat Workspace is an Android application designed as an LLM workspace integration for text, media, and basic audio recording. It provides a central hub for managing chats and integrating with external large language models (LLMs).
+
+_Note: This application is currently in a prototype phase. Features like tool-calling, foreground service audio recording, and clean architecture boundaries are planned or partially implemented._
 
 ---
 
-## 1. Architectural Integrity & Core Components
+## 1. Architectural Status & Core Components
 
-This application utilizes Clean Architecture principles layered with Jetpack Compose, the Room Database, Kotlin Coroutines, and StateFlow structures.
+This application is actively being refactored towards Clean Architecture principles. It uses Jetpack Compose, Room Database, and Kotlin Coroutines.
 
-### A. In-app Floating HUD Mode
-* **Quick Microphone Capture**: Enables fast voice-to-text input and quick-reply execution through a simplified in-app panel.
-* **Adaptive Integration**: Serves as a quick-launch utility within the app. Toggling between standard workspace panes and the voice HUD preserves full session states.
+### A. Core Workspace Flow (Prototype)
+* **Context Storage**: Basic Room SQLite persistence layer storing historical sessions, chat history, and prompt templates. Media attachments are handled via URI references. 
+* **Workspace Chat**: Supports basic message exchanges with LLMs and basic file ingestions depending on provider capabilities. Tool-calling is currently **planned** and not yet implemented.
+* **No Overlay/OCR Services**: This application does not include screenshot parsing, OCR, or active screen-overlay systems.
 
-### B. Screen Chat Workspace Core
-* **Context Storage**: Fully managed Room SQLite persistence layer storing historical sessions, structured multi-role chat history, media attachments, and custom prompt templates.
-* **Unified Workspace Sync**: Synchronizes all active media uploads (Images, Raw TXT, PDFs, MP3, and WAV recordings) with underlying conversational models.
+### B. Meeting Recorder (Prototype)
+* **Recording System**: Uses standard Android AudioRecord. It currently runs within the application lifecycle and **lacks a foreground service/chunking implementation**, meaning recordings may be interrupted if the app is backgrounded or stopped by the OS.
+* **Platform STT Draft**: Integrates the Android `SpeechRecognizer` to stream incremental draft segments. Offline local STT is not guaranteed and depends entirely on the device's capability and network availability.
+* **Data-Flush**: Live draft segments are temporarily written to a `.txt` file cache. Durable Room-based transcript segment storage is planned.
 
-### C. Meeting Recorder
-* **Low-Overhead Pipeline**: Employs a continuous PCM-WAV capturing core for active meeting recording.
-* **Platform STT Draft**: Integrates the Android `SpeechRecognizer` to stream incremental, real-time draft segments without blocking (availability and offline support depend on the device capability).
-* **Data-Flush**: Live draft segments and captured chunks are periodically flushed to storage caches (.txt and .wav).
-
-### D. Multimodal AI Polishing Engine
-* **Multimodal Joint Processing**: Employs Gemini API's multimodal framework to simultaneously ingest raw WAV recordings and draft `.txt` segments.
-* **Vietnamese & English Linguistic Synthesis**: Corrects speech stutters, mispronounced jargon, spelling errors, and background noise to generate structured, punctuated, corporate-grade meeting transcripts.
-* **Graceful Local Fallback**: Falls back automatically to pure text-based linguistic polishing when high-bandwidth audio-payload delivery is constrained by limited networking conditions.
-
-### E. LLM Adaptive Routing Engine
-* **Load Allocation Policies**:
-  - **Round Robin**: Evenly cycles requests through configured API channels and credentials to bypass per-key rate limitations.
-  - **Sticky Execution**: Dedicates calls to a preferred primary channel to maintain long-term session context continuity, falling back to auxiliary channels only when quota exhausts, throttling, or network faults are raised on-device.
-  - **Combo Cycle**: Loops requests across diverse provider combinations and model weights sequentially.
-* **Fault-Backoff Throttling**: Restricts immediate retries on highly limited or faulted endpoints. Incorporates a smart cooldown window to prevent rapid rate-limit loops.
+### C. Multimodal & LLM Integration
+* **Multimodal Polish**: Supports sending recordings and transcripts to the Gemini API for polishing (e.g., structuring stutters and jargon into readable text).
+* **AI Providers**: Supports basic integration with Gemini (GenerateContent protocol) and OpenAI-compatible endpoints (ChatCompletions protocol). The adapter layer is currently being modularized.
+* **Routing Policies (Planned)**: The UI supports configuring Round Robin, Sticky, and Combo routing policies, but comprehensive fault-tolerant LLM switching mechanisms are under active development.
 
 ---
 
 ## 2. Dynamic Environment & Secret Management
 
-All service credentials and API keys are stored securely using the **Secrets Gradle Plugin** combined with Android's environment systems.
-
-* **Secrets Management**: Setup your credentials in the **Secrets panel in AI Studio** or copy `.env.example` to `.env` at the root directory of your project:
-  ```env
-  GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
-  ```
-* **Injecting Secrets**: The gradle plugin loads values from `.env` and maps them cleanly into `BuildConfig.GEMINI_API_KEY` at compile time.
-* **Security Notice**: Never hardcode API keys or secret credentials directly inside source repositories, build files, or `local.properties`.
+* **Compile-Time Keys (Development)**: You can optionally set a default `GEMINI_API_KEY` for development using the **Secrets plugin** or `.env` file mapped to `BuildConfig`.
+* **Runtime Keys (Production)**: User-provided API keys (such as custom OpenRouter or OpenAI keys) are entered at runtime via the App Settings UI and stored locally. Keystore-backed encryption is planned for advanced security.
+* **Security Notice**: Never hardcode API keys or secret credentials directly inside source repositories or build files.
 
 ---
 

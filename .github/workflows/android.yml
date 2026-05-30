@@ -48,6 +48,10 @@ jobs:
         cache: gradle
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
+    
+    - name: Run Lint
+      run: ./gradlew :app:lintDebug
+      
     - name: Run Tests & Build Debug APK
       run: ./gradlew :app:testDebugUnitTest :app:assembleDebug
     
