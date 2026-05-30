@@ -17,8 +17,8 @@ This application utilizes Clean Architecture principles layered with Jetpack Com
 * **Unified Workspace Sync**: Synchronizes all active media uploads (Images, Raw TXT, PDFs, MP3, and WAV recordings) with underlying conversational models.
 
 ### C. Meeting Recorder
-* **Low-Overhead Pipeline**: Employs a continuous PCM-WAV capturing core designed for hours of uninterrupted conference recording.
-* **On-Device Hybrid STT**: Integrates the Android local `SpeechRecognizer` to stream incremental, real-time draft segments on-device without blocking.
+* **Low-Overhead Pipeline**: Employs a continuous PCM-WAV capturing core for active meeting recording.
+* **Platform STT Draft**: Integrates the Android `SpeechRecognizer` to stream incremental, real-time draft segments without blocking (availability and offline support depend on the device capability).
 * **Data-Flush**: Live draft segments and captured chunks are periodically flushed to storage caches (.txt and .wav).
 
 ### D. Multimodal AI Polishing Engine
