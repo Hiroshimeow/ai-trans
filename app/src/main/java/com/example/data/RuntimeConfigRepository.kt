@@ -91,9 +91,9 @@ class RuntimeConfigRepository(private val context: Context) {
     private val adapter = moshi.adapter(RuntimeConfig::class.java)
 
     fun loadConfig(): RuntimeConfig {
-        val customFile = File(context.getExternalFilesDir("config"), "config.json")
+        val customFile = File(context.getExternalFilesDir(null), "stc.json")
         if (!customFile.exists()) {
-            throw ConfigIssueException("ConfigMissing: config.json file not found")
+            throw ConfigIssueException("ConfigMissing: stc.json file not found at ${customFile.absolutePath}")
         }
         
         return try {

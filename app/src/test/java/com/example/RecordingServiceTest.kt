@@ -30,9 +30,9 @@ class RecordingServiceTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         appDatabase = AppDatabase.getDatabase(context)
         
-        val dir = java.io.File(context.getExternalFilesDir("config"), "")
+        val dir = java.io.File(context.getExternalFilesDir(null), "")
         dir.mkdirs()
-        java.io.File(dir, "config.json").writeText("{}")
+        java.io.File(dir, "stc.json").writeText("{}")
     }
 
     @Test

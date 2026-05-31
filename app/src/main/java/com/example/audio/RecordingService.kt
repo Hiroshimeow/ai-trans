@@ -64,11 +64,26 @@ class RecordingService : Service() {
                                         finalTranscript = transcriptText.ifBlank { sessionEntity.finalTranscript }
                                     )
                                 )
+                                val root = org.json.JSONObject()
+                                root.put("source", "OnDevice")
+                                val meta = org.json.JSONObject()
+                                meta.put("duration", durationSecs.toString())
+                                meta.put("date", System.currentTimeMillis().toString())
+                                root.put("metadata", meta)
+                                
+                                val segsArray = org.json.JSONArray()
+                                val segObj = org.json.JSONObject()
+                                segObj.put("text", transcriptText)
+                                segObj.put("timestampMs", 0L)
+                                segsArray.put(segObj)
+                                root.put("segments", segsArray)
+                                val jsonStr = root.toString()
+
                                 val recording = com.example.data.RecordingEntity(
                                     id = sessionId,
                                     audioPath = file.absolutePath,
                                     durationSeconds = durationSecs,
-                                    transcript = transcriptText.ifBlank { "" },
+                                    transcript = jsonStr,
                                     createdAt = System.currentTimeMillis(),
                                     error = null
                                 )
@@ -164,11 +179,26 @@ class RecordingService : Service() {
                                         finalTranscript = transcriptText.ifBlank { sessionEntity.finalTranscript }
                                     )
                                 )
+                                val root = org.json.JSONObject()
+                                root.put("source", "OnDevice")
+                                val meta = org.json.JSONObject()
+                                meta.put("duration", durationSecs.toString())
+                                meta.put("date", System.currentTimeMillis().toString())
+                                root.put("metadata", meta)
+                                
+                                val segsArray = org.json.JSONArray()
+                                val segObj = org.json.JSONObject()
+                                segObj.put("text", transcriptText)
+                                segObj.put("timestampMs", 0L)
+                                segsArray.put(segObj)
+                                root.put("segments", segsArray)
+                                val jsonStr = root.toString()
+
                                 val recording = com.example.data.RecordingEntity(
                                     id = sessionId,
                                     audioPath = file.absolutePath,
                                     durationSeconds = durationSecs,
-                                    transcript = transcriptText.ifBlank { "" },
+                                    transcript = jsonStr,
                                     createdAt = System.currentTimeMillis(),
                                     error = null
                                 )
@@ -187,7 +217,26 @@ class RecordingService : Service() {
                 isServiceRunning = false
             }
             ACTION_CANCEL -> {
-                RecordingController.getInstance(this@RecordingService).cancelRecording()
+                val controller = RecordingController.getInstance(this@RecordingService)
+                val sessionId = controller.recordingState.value.sessionId
+                controller.cancelRecording()
+                
+                if (sessionId != null) {
+                    serviceScope.launch {
+                        val db = com.example.data.AppDatabase.getDatabase(this@RecordingService)
+                        val sessionEntity = db.recordingSessionDao().getRecordingSessionById(sessionId)
+                        if (sessionEntity != null) {
+                            db.recordingSessionDao().updateRecordingSession(
+                                sessionEntity.copy(
+                                    status = "cancelled",
+                                    stopReason = "cancelled",
+                                    endedAt = System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
+                }
+                
                 isServiceRunning = false
                 stopForeground(true)
                 stopSelf()

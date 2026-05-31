@@ -53,7 +53,7 @@ class AudioRecorderHelper(
     private var outputFile: File? = null
     val currentFile: File? get() = outputFile
 
-    // Callback
+    var isDiscarded = false
     var onAutoStoppedListener: ((File) -> Unit)? = null
     var onErrorListener: ((String) -> Unit)? = null
 
@@ -95,6 +95,7 @@ class AudioRecorderHelper(
 
             audioRecord?.startRecording()
             isRecording = true
+            isDiscarded = false
             durationMs = 0L
             currentRms = 0f
 
@@ -189,7 +190,9 @@ class AudioRecorderHelper(
                 }
                 // Overwrite correct WAV header size details
                 writeWavHeaderDetails(file, totalBytesWritten)
-                copyToSharedMediaStore(file)
+                if (!isDiscarded) {
+                    copyToSharedMediaStore(file)
+                }
 
                 withContext(Dispatchers.Main) {
                     Log.d(tag, "Recording finished writing. Total audio payload bytes: $totalBytesWritten")

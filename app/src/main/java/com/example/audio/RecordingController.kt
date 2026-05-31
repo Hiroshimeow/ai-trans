@@ -125,6 +125,7 @@ class RecordingController private constructor(context: Context) {
     }
     
     fun cancelRecording() {
+        recorderHelper.isDiscarded = true
         val file = recorderHelper.stopRecording()
         if (file != null && file.exists()) {
             file.delete()
@@ -135,6 +136,7 @@ class RecordingController private constructor(context: Context) {
     fun failRecording(errorMessage: String) {
         val sid = _recordingState.value.sessionId
         scope.launch { _events.emit(RecordingEvent.Error(errorMessage, sid)) }
+        recorderHelper.isDiscarded = true
         val file = recorderHelper.stopRecording()
         if (file != null && file.exists()) {
             file.delete()

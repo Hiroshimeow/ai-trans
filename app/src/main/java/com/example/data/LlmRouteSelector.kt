@@ -86,11 +86,11 @@ object LlmRouteSelector {
 
         val activeId = runtimeConfig.providers.defaultProviderId
         if (activeId.isBlank()) {
-            throw ConfigIssueException("ProviderNotFound: defaultProviderId is missing in config.json")
+            throw ConfigIssueException("ProviderNotFound: defaultProviderId is missing in stc.json")
         }
 
         val pItem = runtimeConfig.providers.items.find { it.id == activeId && it.enabled }
-            ?: throw ConfigIssueException("ProviderNotFound: Provider '$activeId' not found or disabled in config.json")
+            ?: throw ConfigIssueException("ProviderNotFound: Provider '$activeId' not found or disabled in stc.json")
 
         val resolvedKey = credentialStore.getSecret(pItem.apiKeyAlias)
         if (resolvedKey.isNullOrBlank()) {
