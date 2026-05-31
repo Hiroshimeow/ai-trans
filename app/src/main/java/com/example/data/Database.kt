@@ -304,6 +304,34 @@ data class McpToolEntity(
     val errorMessage: String? = null
 )
 
+@Entity(tableName = "tool_calls")
+data class ToolCallEntity(
+    @PrimaryKey val id: String,
+    val sessionId: String,
+    val messageId: String,
+    val serverId: String,
+    val toolName: String,
+    val argumentsJson: String,
+    val resultSummary: String?,
+    val status: String,
+    val errorCode: String?,
+    val isDestructive: Boolean,
+    val createdAt: Long,
+    val executedAt: Long?
+)
+
+@Dao
+interface ToolCallDao {
+    @Query("SELECT * FROM tool_calls WHERE sessionId = :sessionId ORDER BY createdAt ASC")
+    fun getToolCallsForSessionFlow(sessionId: String): Flow<List<ToolCallEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertToolCall(call: ToolCallEntity)
+
+    @Update
+    suspend fun updateToolCall(call: ToolCallEntity)
+}
+
 @Dao
 interface McpDao {
     @Query("SELECT * FROM mcp_servers ORDER BY createdAt ASC")
@@ -348,7 +376,8 @@ interface McpDao {
         TranscriptSegmentEntity::class,
         TranscriptJobEntity::class,
         McpServerEntity::class,
-        McpToolEntity::class
+        McpToolEntity::class,
+        ToolCallEntity::class
     ],
     version = 7,
     exportSchema = true
@@ -364,6 +393,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun transcriptSegmentDao(): TranscriptSegmentDao
     abstract fun transcriptJobDao(): TranscriptJobDao
     abstract fun mcpDao(): McpDao
+    abstract fun toolCallDao(): ToolCallDao
 
     companion object {
         @Volatile
@@ -466,6 +496,28 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `tool_calls` (
+                        `id` TEXT NOT NULL, 
+                        `sessionId` TEXT NOT NULL, 
+                        `messageId` TEXT NOT NULL, 
+                        `serverId` TEXT NOT NULL, 
+                        `toolName` TEXT NOT NULL, 
+                        `argumentsJson` TEXT NOT NULL, 
+                        `resultSummary` TEXT, 
+                        `status` TEXT NOT NULL, 
+                        `errorCode` TEXT, 
+                        `isDestructive` INTEGER NOT NULL, 
+                        `createdAt` INTEGER NOT NULL, 
+                        `executedAt` INTEGER, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getDatabase(context: android.content.Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -473,7 +525,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "screen_chat_workspace_db"
                 )
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .apply {
                     if (com.example.BuildConfig.DEBUG) {
                         fallbackToDestructiveMigration()

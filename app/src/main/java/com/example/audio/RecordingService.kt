@@ -89,11 +89,20 @@ class RecordingService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val stopIntent = Intent(this, RecordingService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 1, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Screen Chat Workspace")
             .setContentText("Recording in progress...")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
             .setOngoing(true)
             .build()
     }

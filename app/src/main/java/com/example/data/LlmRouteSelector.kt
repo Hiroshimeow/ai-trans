@@ -8,6 +8,10 @@ import java.util.Locale
 
 class ConfigIssueException(message: String) : Exception(message)
 
+enum class LlmCapability {
+    Chat, SttPrimary, SttFallback, TranscriptPolish
+}
+
 object LlmRouteSelector {
     private const val TAG = "LlmRouteSelector"
 
@@ -74,169 +78,54 @@ object LlmRouteSelector {
     fun selectRoute(
         context: Context,
         settingsManager: SettingsManager,
-        runtimeConfigRepo: RuntimeConfigRepository? = null,
-        credentialStore: CredentialStore? = null
+        runtimeConfigRepo: RuntimeConfigRepository,
+        credentialStore: CredentialStore,
+        capability: LlmCapability = LlmCapability.Chat
     ): ResolvedRoute {
-        val runtimeConfig = runtimeConfigRepo?.loadConfig()
-        val configProviders = runtimeConfig?.providers?.items?.filter { it.enabled }?.map { pItem ->
-            val resolvedKey = credentialStore?.getSecret(pItem.apiKeyAlias)
-            if (resolvedKey.isNullOrBlank() && pItem.apiKeyAlias.isNotBlank()) {
-                throw ConfigIssueException("CredentialMissing: Secret not found for alias ${pItem.apiKeyAlias}")
-            }
-            LlmProvider(
-                id = pItem.id,
-                name = pItem.type.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
-                endpointUrl = pItem.endpoint,
-                apiKey = resolvedKey ?: pItem.apiKeyAlias,
-                models = listOfNotNull(pItem.models.chat.takeIf { it.isNotEmpty() }),
-                maxTokens = 4096,
-                protocol = if (pItem.type == "gemini") ProviderProtocol.GeminiGenerateContent else ProviderProtocol.OpenAiChatCompletions
-            )
-        } ?: emptyList()
+        val runtimeConfig = runtimeConfigRepo.loadConfig()
 
-        val activeId = runtimeConfig?.providers?.defaultProviderId?.takeIf { it.isNotEmpty() } 
-            ?: settingsManager.activeProviderId
-
-        // Collect all available providers
-        val userProviders = LlmProvider.fromJsonArrayString(settingsManager.providersJson)
-        val defaultProviders = LlmProvider.getDefaultProviders()
-        
-        val combinedProviders = mutableListOf<LlmProvider>()
-        
-        // Priority 1: Runtime Config
-        configProviders.forEach { combinedProviders.add(it) }
-        
-        // Priority 2: User Defined
-        userProviders.forEach { up ->
-            if (combinedProviders.none { it.id == up.id }) combinedProviders.add(up)
-        }
-        
-        // Priority 3: Defaults
-        defaultProviders.forEach { dp ->
-            if (combinedProviders.none { it.id == dp.id }) combinedProviders.add(dp)
+        val activeId = runtimeConfig.providers.defaultProviderId
+        if (activeId.isBlank()) {
+            throw ConfigIssueException("ProviderNotFound: defaultProviderId is missing in config.json")
         }
 
-        // To protect privacy and prevent empty credentials, we filter providers
-        // with any valid API Key or use local build configuration for default native Gemini
-        val validatedProviders = combinedProviders.filter { p ->
-            if (p.id == "gemini") {
-                // If it is the native gemini, check if user provided custom api key or fallback to BuildConfig in DEBUG ONLY
-                p.apiKey.isNotBlank() || (com.example.BuildConfig.DEBUG && BuildConfig.GEMINI_API_KEY.isNotBlank())
-            } else {
-                p.apiKey.isNotBlank()
-            }
+        val pItem = runtimeConfig.providers.items.find { it.id == activeId && it.enabled }
+            ?: throw ConfigIssueException("ProviderNotFound: Provider '$activeId' not found or disabled in config.json")
+
+        val resolvedKey = credentialStore.getSecret(pItem.apiKeyAlias)
+        if (resolvedKey.isNullOrBlank()) {
+             throw ConfigIssueException("CredentialMissing: Secret not found for alias ${pItem.apiKeyAlias}")
         }
 
-        if (validatedProviders.isEmpty()) {
-            throw ConfigIssueException("CredentialMissing: No active API keys found.")
+        val selModel = when (capability) {
+            LlmCapability.Chat -> pItem.models.chat
+            LlmCapability.SttPrimary -> pItem.models.sttPrimary
+            LlmCapability.SttFallback -> pItem.models.sttFallback
+            LlmCapability.TranscriptPolish -> pItem.models.transcriptPolish
         }
 
-        val now = System.currentTimeMillis()
-
-        // ----------------- CASE 1: COMBO ROUND ROBIN -----------------
-        if (settingsManager.routingStrategyComboRoundRobin) {
-            // Distribute across Combo models: each provider's models expanded as independent endpoints
-            val comboList = mutableListOf<ComboModel>()
-            validatedProviders.forEach { p ->
-                val endpointModels = p.models.ifEmpty { listOf("") }
-                endpointModels.forEach { m ->
-                    comboList.add(ComboModel(p, m))
-                }
-            }
-
-            if (comboList.isEmpty()) {
-                throw ConfigIssueException("MissingModelConfig: No model configured for provider.")
-            }
-
-            // Filter out combos whose provider is currently in cooldown
-            val activeCombos = comboList.filter { !isProviderInCooldown(it.provider.id) }
-
-            if (activeCombos.isEmpty()) {
-                // If every provider is down/cooling, force clear most expired cooldown or pick the first available to prevent dead ends
-                val firstAnyCombo = comboList.first()
-                cooldownMap.remove(firstAnyCombo.provider.id)
-                return ResolvedRoute(
-                    provider = firstAnyCombo.provider,
-                    selectedModel = firstAnyCombo.model,
-                    routingLog = "All LLM Providers in combo are currently in Cooldown. Force-bypassing block for ${firstAnyCombo.provider.name} (${firstAnyCombo.model})."
-                )
-            }
-
-            val comboStickyLimit = settingsManager.routingStrategyComboStickyLimit.coerceAtLeast(1)
-
-            // Let's determine the index in activeCombos
-            var selectedCombo = activeCombos.getOrNull(currentComboIndex % activeCombos.size) ?: activeCombos.first()
-
-            if (currentComboCallCount < comboStickyLimit) {
-                // Keep calling current combo! (Sticky limit not reached)
-                currentComboCallCount++
-            } else {
-                // Sticky limit exceeded, step to next combo!
-                currentComboIndex = (currentComboIndex + 1) % activeCombos.size
-                selectedCombo = activeCombos[currentComboIndex]
-                currentComboCallCount = 1 // reset to first call of the new combo
-            }
-
-            return ResolvedRoute(
-                provider = selectedCombo.provider,
-                selectedModel = selectedCombo.model,
-                routingLog = "Combo Round-Robin Selected: ${selectedCombo.provider.name} | Model: ${selectedCombo.model} (Sticky check: $currentComboCallCount/$comboStickyLimit)"
-            )
+        if (selModel.isBlank()) {
+            throw ConfigIssueException("MissingModelConfig: No model configured for provider ${pItem.id} capability $capability")
         }
 
-        // ----------------- CASE 2: STANDARD ACCOUNT ROUND ROBIN -----------------
-        if (settingsManager.routingStrategyRoundRobin) {
-            // Filter out providers that are currently in cooldown
-            val activeProviders = validatedProviders.filter { !isProviderInCooldown(it.id) }
-
-            if (activeProviders.isEmpty()) {
-                // Force reset cooldown for the first provider if all are dead of cooldown
-                val firstAnyProvider = validatedProviders.first()
-                cooldownMap.remove(firstAnyProvider.id)
-                val selModel = if (firstAnyProvider.models.isNotEmpty()) firstAnyProvider.models.first() else ""
-                return ResolvedRoute(
-                    provider = firstAnyProvider,
-                    selectedModel = selModel,
-                    routingLog = "All LLM Accounts are currently cooling down. Bypassing cooldown timer for ${firstAnyProvider.name}."
-                )
-            }
-
-            val routeStickyLimit = settingsManager.routingStrategyStickyLimit.coerceAtLeast(1)
-
-            var selectedProvider = activeProviders.getOrNull(currentProviderIndex % activeProviders.size) ?: activeProviders.first()
-
-            if (currentProviderCallCount < routeStickyLimit) {
-                // Sticky limit not reached, keep this provider
-                currentProviderCallCount++
-            } else {
-                // Switch to the next available account
-                currentProviderIndex = (currentProviderIndex + 1) % activeProviders.size
-                selectedProvider = activeProviders[currentProviderIndex]
-                currentProviderCallCount = 1
-            }
-
-            val selModel = if (selectedProvider.models.isNotEmpty()) selectedProvider.models.first() else ""
-
-            return ResolvedRoute(
-                provider = selectedProvider,
-                selectedModel = selModel,
-                routingLog = "Account Round-Robin Selected: ${selectedProvider.name} | Model: $selModel (Calls on this account: $currentProviderCallCount/$routeStickyLimit)"
-            )
+        if (isProviderInCooldown(pItem.id)) {
+            throw ConfigIssueException("ProviderInCooldown: Provider ${pItem.id} is currently in a 60-second cooldown period due to recent failures. No configured fallback allowed.")
         }
 
-        // ----------------- CASE 3: STANDARD ACTIVE PROVIDER SELECTION (NO ROBIN) -----------------
-        var targetProvider = validatedProviders.find { it.id == activeId }
-            ?: fallbackToAnyActiveProvider(validatedProviders, activeId)
+        val targetProvider = LlmProvider(
+            id = pItem.id,
+            name = pItem.type.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+            endpointUrl = pItem.endpoint,
+            apiKey = resolvedKey, // Clean, resolved key, NO ALIAS LEAK
+            models = listOf(selModel),
+            maxTokens = 4096,
+            protocol = if (pItem.type == "gemini") ProviderProtocol.GeminiGenerateContent else ProviderProtocol.OpenAiChatCompletions
+        )
 
-        val selModel = if (targetProvider.models.isNotEmpty()) targetProvider.models.first() else ""
-        if (selModel.isEmpty()) {
-            throw ConfigIssueException("MissingModelConfig: No model configured for provider ${targetProvider.id}")
-        }
-        
         return ResolvedRoute(
             provider = targetProvider,
             selectedModel = selModel,
-            routingLog = "Sticky / Standard Session Route Selected: ${targetProvider.name} | Model: $selModel"
+            routingLog = "Config-First Route Selected: ${targetProvider.name} | Capability: $capability | Model: $selModel"
         )
     }
 

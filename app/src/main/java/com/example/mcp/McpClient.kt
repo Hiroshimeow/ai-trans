@@ -25,7 +25,12 @@ class McpClientImpl(
     }
 
     private fun getAuthToken(server: McpServerConfig): String {
-        return credentialStore.getSecret(server.tokenAlias) ?: ""
+        if (server.tokenAlias.isBlank()) return ""
+        val secret = credentialStore.getSecret(server.tokenAlias)
+        if (secret.isNullOrBlank()) {
+            throw Exception("CredentialMissing: Secret not found for testing MCP server alias: ${server.tokenAlias}")
+        }
+        return secret
     }
 
     override suspend fun listTools(server: McpServerConfig): List<McpToolDefinition> = withContext(Dispatchers.IO) {

@@ -345,15 +345,39 @@ class WorkspaceRepository(
     }
 
     // --- Recordings Management ---
-    suspend fun saveLiveTranscriptSegment(sessionId: String, text: String) = withContext(Dispatchers.IO) {
+    suspend fun createLiveRecordingSession(sessionId: String, title: String, mode: String) = withContext(Dispatchers.IO) {
+        val sessionEntity = RecordingSessionEntity(
+            id = sessionId,
+            workspaceSessionId = null,
+            title = title,
+            mode = mode,
+            audioPath = null,
+            startedAt = System.currentTimeMillis(),
+            endedAt = null,
+            durationMs = 0L,
+            status = "recording",
+            stopReason = null,
+            providerId = "gemini",
+            language = "vi",
+            finalTranscript = null,
+            summary = null,
+            actionItemsJson = null,
+            errorCode = null,
+            errorMessage = null
+        )
+        database.recordingSessionDao().insertRecordingSession(sessionEntity)
+    }
+
+    suspend fun saveLiveTranscriptSegment(sessionId: String, text: String, isFinal: Boolean, index: Int) = withContext(Dispatchers.IO) {
+        val segmentId = if (isFinal) UUID.randomUUID().toString() else "${sessionId}_partial"
         val segment = TranscriptSegmentEntity(
-            id = "${sessionId}_live",
+            id = segmentId,
             recordingSessionId = sessionId,
-            index = 0,
+            index = index,
             startMs = 0L,
             endMs = null,
             text = text,
-            isFinal = false,
+            isFinal = isFinal,
             speakerLabel = null,
             language = null,
             confidence = null,
@@ -440,13 +464,13 @@ class WorkspaceRepository(
     suspend fun transcribeAudioFile(audioFile: java.io.File): String {
         val audioBytes = audioFile.readBytes()
         val sttPrompt = settingsManager.sttPrompt
-        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager, RuntimeConfigRepository(context), EncryptedCredentialStore(context))
+        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager, RuntimeConfigRepository(context), EncryptedCredentialStore(context), com.example.data.LlmCapability.SttPrimary)
         return llmRouter.transcribeAudio(audioBytes, sttPrompt, route.provider, route.selectedModel)
     }
 
     suspend fun polishAudioAndTxt(audioFile: java.io.File, rawSTT: String): String {
         val audioBytes = if (audioFile.exists() && audioFile.length() > 0) audioFile.readBytes() else null
-        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager, RuntimeConfigRepository(context), EncryptedCredentialStore(context))
+        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager, RuntimeConfigRepository(context), EncryptedCredentialStore(context), com.example.data.LlmCapability.TranscriptPolish)
         return llmRouter.polishAudioAndTxt(audioBytes, rawSTT, route.provider, route.selectedModel)
     }
 }

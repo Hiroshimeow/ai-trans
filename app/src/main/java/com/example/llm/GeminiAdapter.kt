@@ -143,7 +143,7 @@ class GeminiAdapter(
                 val mcpMeta = toolIdToMcpMeta[toolName]
                 val resultData: Map<String, Any> = if (mcpMeta != null) {
                     try {
-                        val result = mcpRepository.executeTool(mcpMeta.serverId, mcpMeta.name, argsJsonStr)
+                        val result = mcpRepository.executeTool(request.userMessage.sessionId, request.userMessage.id, mcpMeta.serverId, mcpMeta.name, argsJsonStr)
                         mapOf("result" to result.content)
                     } catch (e: Exception) {
                         mapOf("error" to "Failed to execute tool: ${e.message}")

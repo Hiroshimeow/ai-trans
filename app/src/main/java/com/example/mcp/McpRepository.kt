@@ -9,6 +9,7 @@ import java.util.UUID
 
 class McpRepository(
     private val mcpDao: McpDao,
+    private val toolCallDao: com.example.data.ToolCallDao,
     private val mcpClient: McpClient,
     private val credentialStore: CredentialStore,
     private val runtimeConfigRepo: com.example.data.RuntimeConfigRepository
@@ -80,7 +81,7 @@ class McpRepository(
         return mcpDao.getToolsForServerSync(serverId).filter { it.enabled }
     }
 
-    suspend fun executeTool(serverId: String, toolName: String, argsJson: String): com.example.mcp.McpToolResult {
+    suspend fun executeTool(sessionId: String, messageId: String, serverId: String, toolName: String, argsJson: String): com.example.mcp.McpToolResult {
         val server = getEnabledServersSync().find { it.id == serverId }
             ?: throw IllegalStateException("Server not found or disabled: $serverId")
         
@@ -91,7 +92,55 @@ class McpRepository(
             tokenAlias = server.tokenAlias,
             enabled = server.enabled
         )
-        return mcpClient.callTool(config, toolName, argsJson)
+
+        // Policy Check
+        val lowerName = toolName.lowercase()
+        val isDestructive = lowerName.contains("shell") || lowerName.contains("delete") || 
+                            lowerName.contains("move") || lowerName.contains("write") || 
+                            lowerName.contains("push") || lowerName.contains("execute")
+
+        val callId = UUID.randomUUID().toString()
+        val toolCall = com.example.data.ToolCallEntity(
+            id = callId,
+            sessionId = sessionId,
+            messageId = messageId,
+            serverId = serverId,
+            toolName = toolName,
+            argumentsJson = argsJson,
+            resultSummary = null,
+            status = if (isDestructive) "pending_approval" else "executing",
+            errorCode = null,
+            isDestructive = isDestructive,
+            createdAt = System.currentTimeMillis(),
+            executedAt = null
+        )
+        toolCallDao.insertToolCall(toolCall)
+
+        if (isDestructive) {
+            toolCallDao.updateToolCall(toolCall.copy(
+                status = "rejected",
+                errorCode = "ToolApprovalRequired",
+                resultSummary = "Destructive tool execution blocked. User approval UI flow is pending implementation."
+            ))
+            throw Exception("ToolApprovalRequired: Destructive tools require user approval which is not yet available.")
+        }
+
+        return try {
+            val result = mcpClient.callTool(config, toolName, argsJson)
+            toolCallDao.updateToolCall(toolCall.copy(
+                status = "executed",
+                resultSummary = "Success: \${result.content.take(100)}...",
+                executedAt = System.currentTimeMillis()
+            ))
+            result
+        } catch (e: Exception) {
+            toolCallDao.updateToolCall(toolCall.copy(
+                status = "failed",
+                errorCode = e.javaClass.simpleName,
+                resultSummary = e.message
+            ))
+            throw e
+        }
     }
 
     suspend fun testAndRefreshTools(server: McpServerEntity): Result<Unit> {

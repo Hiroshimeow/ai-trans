@@ -90,23 +90,17 @@ class RuntimeConfigRepository(private val context: Context) {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val adapter = moshi.adapter(RuntimeConfig::class.java)
 
-    fun loadConfig(): RuntimeConfig? {
-        // Try file from Android/data/<package>/files/config/config.json
+    fun loadConfig(): RuntimeConfig {
         val customFile = File(context.getExternalFilesDir("config"), "config.json")
-        if (customFile.exists()) {
-            return parse(customFile.readText())
+        if (!customFile.exists()) {
+            throw ConfigIssueException("ConfigMissing: config.json file not found")
         }
         
-        // Otherwise default configuration logic (return a blank config, letting UI or other prompt for it)
-        return RuntimeConfig()
-    }
-
-    private fun parse(json: String): RuntimeConfig? {
         return try {
-            adapter.fromJson(json)
+            adapter.fromJson(customFile.readText()) ?: throw ConfigIssueException("ConfigMissing: Parsed config is null")
         } catch (e: Exception) {
-            e.printStackTrace()
-            null
+            if (e is ConfigIssueException) throw e
+            throw ConfigIssueException("ConfigParseError: ${e.message}")
         }
     }
 }

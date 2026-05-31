@@ -10,14 +10,17 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
 
+sealed class TranscriptEvent {
+    data class Partial(val text: String) : TranscriptEvent()
+    data class Final(val text: String) : TranscriptEvent()
+}
+
 class OnDeviceSpeechHelper(
     private val context: Context,
-    private val onResult: (String) -> Unit,
+    private val onEvent: (TranscriptEvent) -> Unit,
     private val onError: (String) -> Unit
 ) {
     private var speechRecognizer: SpeechRecognizer? = null
-    private val segments = mutableListOf<String>()
-    private var currentSegment = ""
     private var isRunning = false
     private var activeLanguageCode = "vi-VN"
     private val handler = Handler(Looper.getMainLooper())
@@ -26,7 +29,6 @@ class OnDeviceSpeechHelper(
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            // Dictation variables to enhance system sensitivity
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 10000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
@@ -64,7 +66,6 @@ class OnDeviceSpeechHelper(
             Log.w("OnDeviceSpeechHelper", "SpeechRecognizer error callback: $message")
             
             if (isRunning) {
-                // Instantly re-initiate speech recognition loop after short timeout
                 if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                     handler.postDelayed({ safeRecreateAndStart() }, 300)
                 } else {
@@ -78,11 +79,9 @@ class OnDeviceSpeechHelper(
             if (!matches.isNullOrEmpty()) {
                 val text = matches[0]
                 if (text.isNotBlank()) {
-                    segments.add(text)
+                    onEvent(TranscriptEvent.Final(text))
                 }
             }
-            currentSegment = ""
-            notifyUpdate()
 
             if (isRunning) {
                 handler.post({ safeListen() })
@@ -92,9 +91,11 @@ class OnDeviceSpeechHelper(
         override fun onPartialResults(partialResults: Bundle?) {
             val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (!matches.isNullOrEmpty()) {
-                currentSegment = matches[0]
+                val text = matches[0]
+                if (text.isNotBlank()) {
+                    onEvent(TranscriptEvent.Partial(text))
+                }
             }
-            notifyUpdate()
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -130,22 +131,10 @@ class OnDeviceSpeechHelper(
         }
     }
 
-    private fun notifyUpdate() {
-        val total = mutableListOf<String>()
-        total.addAll(segments)
-        if (currentSegment.isNotBlank()) {
-            total.add(currentSegment)
-        }
-        val text = total.joinToString(". ")
-        onResult(text)
-    }
-
     fun startListening(languageCode: String = "vi-VN") {
         if (isRunning) return
         isRunning = true
         activeLanguageCode = languageCode
-        segments.clear()
-        currentSegment = ""
         safeRecreateAndStart()
     }
 
