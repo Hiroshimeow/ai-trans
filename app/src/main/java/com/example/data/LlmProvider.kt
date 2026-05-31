@@ -69,12 +69,7 @@ data class LlmProvider(
                     name = "Gemini",
                     endpointUrl = "",
                     apiKey = "",
-                    models = listOf(
-                        "gemini-2.5-flash",
-                        "gemini-2.5-pro",
-                        "gemini-1.5-flash",
-                        "gemini-1.5-pro"
-                    ),
+                    models = emptyList(),
                     maxTokens = 4096,
                     protocol = ProviderProtocol.GeminiGenerateContent
                 )

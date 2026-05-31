@@ -282,7 +282,7 @@ interface TranscriptJobDao {
 data class McpServerEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val baseUrl: String,
+    @ColumnInfo(name = "baseUrl") val endpointUrl: String,
     val tokenAlias: String,
     val enabled: Boolean,
     val createdAt: Long,

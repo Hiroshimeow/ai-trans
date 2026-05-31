@@ -26,7 +26,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val credentialStore = com.example.data.EncryptedCredentialStore(context)
     private val defaultClient = okhttp3.OkHttpClient.Builder().build()
     private val mcpClient = com.example.mcp.McpClientImpl(defaultClient, credentialStore)
-    val mcpRepository = com.example.mcp.McpRepository(database.mcpDao(), mcpClient, credentialStore)
+    private val runtimeConfigRepo = com.example.data.RuntimeConfigRepository(context)
+    val mcpRepository = com.example.mcp.McpRepository(database.mcpDao(), mcpClient, credentialStore, runtimeConfigRepo)
     private val llmRouter = com.example.llm.LlmRouter(context, settingsManager, mcpRepository)
     private val repository = WorkspaceRepository(context, database, llmRouter)
 
@@ -276,11 +277,68 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startMeetingRecording() {
         isMeetingActive.value = true
         liveMeetingTranscript.value = ""
-        startAudioRecording()
+        playerHelper.stopAudio()
+        activeAudioPlaybackPath.value = null
+        recordAutoStoppedDueToSilence.value = false
+        
+        val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+            action = RecordingService.ACTION_START
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            context.startForegroundService(serviceIntent)
+        } else {
+            context.startService(serviceIntent)
+        }
+        
+        recordingStatus.value = RecordingStatus.RECORDING
+        isRecordingAudio.value = true
+        liveSpeechResult.value = ""
+        
+        val useOnDevice = settingsManager.useOnDeviceRecognizer || true
+        if (useOnDevice) {
+            localSpeechHelper = OnDeviceSpeechHelper(context,
+                onResult = { result ->
+                    liveSpeechResult.value = result
+                    liveMeetingTranscript.value = result
+                    Log.d(tag, "Local continuous transcript update: $result")
+                },
+                onError = { err ->
+                    Log.e(tag, "Local SpeechRecognizer error: $err")
+                    if (err.contains("timeout", ignoreCase = true)) {
+                        recordingStatus.value = RecordingStatus.TIMEOUT
+                    } else {
+                        recordingStatus.value = RecordingStatus.ERROR
+                    }
+                }
+            )
+            localSpeechHelper?.startListening(settingsManager.speechLanguage)
+        }
+        
+        viewModelScope.launch {
+            while (isRecordingAudio.value) {
+                recordingDurationMs.value = recorderHelper.durationMs
+                recordingRmsAmplitude.value = recorderHelper.currentRms
+
+                if (!recorderHelper.isRecording && recorderHelper.durationMs > 0) {
+                    recordAutoStoppedDueToSilence.value = true
+                    isRecordingAudio.value = false
+                    break
+                }
+                delay(100)
+            }
+        }
     }
 
     fun stopMeetingRecording() {
-        stopAudioRecording()
+        recordingStatus.value = RecordingStatus.STOPPING
+        isRecordingAudio.value = false
+        localSpeechHelper?.stopListening()
+        localSpeechHelper = null
+        
+        val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+            action = RecordingService.ACTION_STOP
+        }
+        context.startService(serviceIntent)
     }
 
     fun cancelAudioRecording() {
@@ -401,9 +459,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val file = activeRecordingFile ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val txtFile = File(file.parentFile, file.nameWithoutExtension + ".txt")
-                txtFile.writeText(text)
-                Log.d(tag, "Safely flushed live transcript to disk: ${txtFile.name} (${text.length} chars)")
+                // val txtFile = File(file.parentFile, file.nameWithoutExtension + ".txt")
+                // txtFile.writeText(text)
+                Log.d(tag, "Safely flushed live transcript to database instead of disk")
             } catch (e: Exception) {
                 Log.e(tag, "Failed to write live transcript to disk", e)
             }
@@ -430,8 +488,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             Log.d(tag, "STT completed -> Transcript: $transcript")
 
-            val txtFile = File(wavFile.parentFile, wavFile.nameWithoutExtension + ".txt")
-            txtFile.writeText(transcript)
+            // val txtFile = File(wavFile.parentFile, wavFile.nameWithoutExtension + ".txt")
+            // txtFile.writeText(transcript)
 
             val segments = listOf(TranscriptSegment(transcript, 0L))
             val transcriptData = TranscriptData(
@@ -524,7 +582,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Log.d(tag, "Polishing transcript for recording: ${recording.id}, file: ${wavFile.name}")
                 val polishedText = repository.polishAudioAndTxt(wavFile, textToUse)
 
-                txtFile.writeText(polishedText)
+                // txtFile.writeText(polishedText)
 
                 val updatedSegments = listOf(TranscriptSegment(polishedText, 0L))
                 val updatedData = TranscriptData(

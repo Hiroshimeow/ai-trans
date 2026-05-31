@@ -15,7 +15,8 @@ class LlmRouter(
     fun getAdapter(provider: LlmProvider): LlmAdapter {
         return when (provider.protocol) {
             ProviderProtocol.GeminiGenerateContent -> {
-                GeminiAdapter(provider.apiKey, mcpRepository)
+                val apiKey = if (provider.apiKey.isNotEmpty()) provider.apiKey else if (BuildConfig.DEBUG) BuildConfig.GEMINI_API_KEY else ""
+                GeminiAdapter(apiKey, mcpRepository)
             }
             ProviderProtocol.OpenAiChatCompletions,
             ProviderProtocol.OllamaChatCompletions,
@@ -38,7 +39,7 @@ class LlmRouter(
         
         val modelToUse = if (!selectedModel.isNullOrEmpty()) selectedModel 
                          else if (provider.models.isNotEmpty()) provider.models.first() 
-                         else "gpt-4o"
+                         else throw IllegalStateException("MissingModelConfig: No model configured for provider ${provider.id}")
                          
         val request = CoreChatRequest(
             chatHistory = chatHistory,

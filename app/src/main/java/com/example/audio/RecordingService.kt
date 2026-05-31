@@ -17,6 +17,8 @@ class RecordingService : Service() {
     companion object {
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
+        const val ACTION_RECORDING_STARTED = "com.example.audio.RECORDING_STARTED"
+        const val EXTRA_FILE_PATH = "EXTRA_FILE_PATH"
         private const val NOTIFICATION_ID = 101
         private const val CHANNEL_ID = "recording_channel"
         
@@ -33,13 +35,20 @@ class RecordingService : Service() {
             ACTION_START -> {
                 isServiceRunning = true
                 startForeground(NOTIFICATION_ID, createNotification())
-                // Currently, AudioRecorderHelper inside MainViewModel handles the loop.
-                // In a true refactoring, the AudioRecord instantiation moves here.
-                // Given the constraint to not break everything immediately, 
-                // holding this foreground service keeps the app process alive 
-                // while the ViewModel's coroutine does the chunk recording.
+                if (!AudioRecorderHelper.getInstance(this).isRecording) {
+                    AudioRecorderHelper.getInstance(this).isSilenceDetectionEnabled = false
+                    val file = AudioRecorderHelper.getInstance(this).startRecording()
+                    if (file != null) {
+                        val broadcastIntent = Intent(ACTION_RECORDING_STARTED)
+                        broadcastIntent.putExtra(EXTRA_FILE_PATH, file.absolutePath)
+                        sendBroadcast(broadcastIntent)
+                    }
+                }
             }
             ACTION_STOP -> {
+                if (AudioRecorderHelper.getInstance(this).isRecording) {
+                    AudioRecorderHelper.getInstance(this).stopRecording()
+                }
                 isServiceRunning = false
                 stopForeground(true)
                 stopSelf()

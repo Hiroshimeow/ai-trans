@@ -70,30 +70,52 @@ object LlmRouteSelector {
      */
     fun selectRoute(
         context: Context,
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        runtimeConfigRepo: RuntimeConfigRepository? = null,
+        credentialStore: CredentialStore? = null
     ): ResolvedRoute {
+        val runtimeConfig = runtimeConfigRepo?.loadConfig()
+        val configProviders = runtimeConfig?.providers?.items?.filter { it.enabled }?.map { pItem ->
+            val resolvedKey = credentialStore?.getSecret(pItem.apiKeyAlias) ?: pItem.apiKeyAlias
+            LlmProvider(
+                id = pItem.id,
+                name = pItem.type.capitalize(),
+                endpointUrl = pItem.endpoint,
+                apiKey = resolvedKey,
+                models = listOfNotNull(pItem.models.chat.takeIf { it.isNotEmpty() }),
+                maxTokens = 4096,
+                protocol = if (pItem.type == "gemini") ProviderProtocol.GeminiGenerateContent else ProviderProtocol.OpenAiChatCompletions
+            )
+        } ?: emptyList()
+
+        val activeId = runtimeConfig?.providers?.defaultProviderId?.takeIf { it.isNotEmpty() } 
+            ?: settingsManager.activeProviderId
+
         // Collect all available providers
         val userProviders = LlmProvider.fromJsonArrayString(settingsManager.providersJson)
         val defaultProviders = LlmProvider.getDefaultProviders()
         
-        // Combine them nicely: user defined first, then default if not duplicated by ID
         val combinedProviders = mutableListOf<LlmProvider>()
+        
+        // Priority 1: Runtime Config
+        configProviders.forEach { combinedProviders.add(it) }
+        
+        // Priority 2: User Defined
         userProviders.forEach { up ->
-            combinedProviders.add(up)
+            if (combinedProviders.none { it.id == up.id }) combinedProviders.add(up)
         }
-        // Fill up default ones if missing
+        
+        // Priority 3: Defaults
         defaultProviders.forEach { dp ->
-            if (combinedProviders.none { it.id == dp.id }) {
-                combinedProviders.add(dp)
-            }
+            if (combinedProviders.none { it.id == dp.id }) combinedProviders.add(dp)
         }
 
         // To protect privacy and prevent empty credentials, we filter providers
         // with any valid API Key or use local build configuration for default native Gemini
         val validatedProviders = combinedProviders.filter { p ->
             if (p.id == "gemini") {
-                // If it is the native gemini, check if user provided custom api key or fallback to BuildConfig
-                p.apiKey.isNotBlank() || BuildConfig.GEMINI_API_KEY.isNotBlank()
+                // If it is the native gemini, check if user provided custom api key or fallback to BuildConfig in DEBUG ONLY
+                p.apiKey.isNotBlank() || (com.example.BuildConfig.DEBUG && BuildConfig.GEMINI_API_KEY.isNotBlank())
             } else {
                 p.apiKey.isNotBlank()
             }
@@ -204,7 +226,6 @@ object LlmRouteSelector {
         }
 
         // ----------------- CASE 3: STANDARD ACTIVE PROVIDER SELECTION (NO ROBIN) -----------------
-        val activeId = settingsManager.activeProviderId
         var targetProvider = validatedProviders.find { it.id == activeId }
             ?: fallbackToAnyActiveProvider(validatedProviders, activeId)
 

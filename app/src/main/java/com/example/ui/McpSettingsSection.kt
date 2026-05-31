@@ -122,7 +122,7 @@ fun McpServerRow(
             .padding(10.dp)
     ) {
         Text(server.name, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
-        Text(server.baseUrl, color = SlateTextSecondary, fontSize = 11.sp)
+        Text(server.endpointUrl, color = SlateTextSecondary, fontSize = 11.sp)
         
         if (server.lastError != null) {
             Text("Error: \${server.lastError}", color = Color.Red, fontSize = 10.sp)

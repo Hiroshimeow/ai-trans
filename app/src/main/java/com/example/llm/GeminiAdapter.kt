@@ -72,28 +72,33 @@ class GeminiAdapter(
             val tools = mcpRepository.getEnabledToolsForServer(server.id)
             for (t in tools) {
                 try {
-                    val safeName = t.name.replace(Regex("[^a-zA-Z0-9_-]"), "_")
-                    if (toolIdToMcpMeta.containsKey(safeName) || duplicates.contains(safeName)) {
-                        Log.w(tag, "Duplicate tool name detected: \$safeName. It will be excluded.")
-                        duplicates.add(safeName)
-                        toolIdToMcpMeta.remove(safeName)
-                        mcpToolsToRun.removeIf { it.name == safeName }
+                    val originalName = t.name
+                    if (!originalName.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_-]*\$"))) {
+                        Log.w(tag, "Invalid tool name for Gemini: $originalName. It requires ^[a-zA-Z_][a-zA-Z0-9_-]*\$. Use an alias in config.")
+                        continue
+                    }
+                    
+                    if (toolIdToMcpMeta.containsKey(originalName) || duplicates.contains(originalName)) {
+                        Log.w(tag, "Duplicate tool name detected: $originalName. It will be excluded.")
+                        duplicates.add(originalName)
+                        toolIdToMcpMeta.remove(originalName)
+                        mcpToolsToRun.removeIf { it.name == originalName }
                         continue
                     }
 
                     val schemaObj = org.json.JSONObject(t.inputSchemaJson)
                     val parametersMap = jsonObjectToMap(schemaObj)
-                    val desc = if (t.description.isNotBlank()) t.description else safeName
+                    val desc = if (t.description.isNotBlank()) t.description else originalName
                     
                     val functionDeclaration = FunctionDeclaration(
-                        name = safeName,
+                        name = originalName,
                         description = desc,
                         parameters = parametersMap
                     )
                     mcpToolsToRun.add(functionDeclaration)
-                    toolIdToMcpMeta[safeName] = t
+                    toolIdToMcpMeta[originalName] = t
                 } catch (e: Exception) {
-                    Log.e(tag, "Failed to parse tool schema for \${t.name}", e)
+                    Log.e(tag, "Failed to parse tool schema for ${t.name}", e)
                 }
             }
         }

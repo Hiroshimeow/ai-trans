@@ -224,7 +224,7 @@ class WorkspaceRepository(
             
             for (attempt in 1..maxAttempts) {
                 // Determine route dynamically based on active routing rules & cooldown status
-                val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager)
+                val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager, RuntimeConfigRepository(context), EncryptedCredentialStore(context))
                 Log.d(tag, "LLM Route attempt $attempt/$maxAttempts via routing selector: ${route.routingLog}")
                 
                 try {
@@ -422,13 +422,13 @@ class WorkspaceRepository(
     suspend fun transcribeAudioFile(audioFile: java.io.File): String {
         val audioBytes = audioFile.readBytes()
         val sttPrompt = settingsManager.sttPrompt
-        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager)
+        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager, RuntimeConfigRepository(context), EncryptedCredentialStore(context))
         return llmRouter.transcribeAudio(audioBytes, sttPrompt, route.provider, route.selectedModel)
     }
 
     suspend fun polishAudioAndTxt(audioFile: java.io.File, rawSTT: String): String {
         val audioBytes = if (audioFile.exists() && audioFile.length() > 0) audioFile.readBytes() else null
-        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager)
+        val route = com.example.data.LlmRouteSelector.selectRoute(context, settingsManager, RuntimeConfigRepository(context), EncryptedCredentialStore(context))
         return llmRouter.polishAudioAndTxt(audioBytes, rawSTT, route.provider, route.selectedModel)
     }
 }

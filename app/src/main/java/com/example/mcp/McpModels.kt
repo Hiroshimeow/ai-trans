@@ -3,7 +3,7 @@ package com.example.mcp
 data class McpServerConfig(
     val id: String,
     val name: String,
-    val baseUrl: String,
+    val endpointUrl: String,
     val tokenAlias: String,
     val enabled: Boolean,
     val timeoutMs: Long = 30_000L

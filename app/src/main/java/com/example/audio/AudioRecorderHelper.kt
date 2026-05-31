@@ -215,8 +215,7 @@ class AudioRecorderHelper(
         }
         val fileTemp = outputFile
         isRecording = false
-        recordJob?.cancel()
-        recordJob = null
+        // Let the recording loop terminate naturally and write headers in the finally block
         return fileTemp
     }
 

@@ -10,11 +10,44 @@ import java.util.UUID
 class McpRepository(
     private val mcpDao: McpDao,
     private val mcpClient: McpClient,
-    private val credentialStore: CredentialStore
+    private val credentialStore: CredentialStore,
+    private val runtimeConfigRepo: com.example.data.RuntimeConfigRepository
 ) {
     fun getAllServersFlow(): Flow<List<McpServerEntity>> = mcpDao.getAllServersFlow()
 
-    suspend fun addServer(name: String, baseUrl: String, token: String) {
+    private fun getConfigServers(): List<McpServerEntity> {
+        val config = runtimeConfigRepo.loadConfig()
+        return config?.mcp?.servers?.filter { it.enabled }?.map {
+            McpServerEntity(
+                id = it.id.ifEmpty { UUID.nameUUIDFromBytes(it.endpoint.toByteArray()).toString() },
+                name = it.name.ifEmpty { "Configured Server" },
+                endpointUrl = it.endpoint,
+                tokenAlias = it.tokenAlias,
+                enabled = it.enabled,
+                createdAt = 0L,
+                updatedAt = 0L,
+                lastConnectedAt = null,
+                lastError = null
+            )
+        } ?: emptyList()
+    }
+
+    suspend fun getEnabledServersSync(): List<McpServerEntity> {
+        val dbServers = mcpDao.getEnabledServersSync()
+        val configServers = getConfigServers()
+        
+        // Merge so that Config Servers take priority, avoiding ID duplication
+        val merged = mutableListOf<McpServerEntity>()
+        merged.addAll(configServers)
+        dbServers.forEach { db ->
+            if (merged.none { it.id == db.id } && merged.none { it.endpointUrl == db.endpointUrl }) {
+                merged.add(db)
+            }
+        }
+        return merged
+    }
+
+    suspend fun addServer(name: String, endpointUrl: String, token: String) {
         val serverId = UUID.randomUUID().toString()
         val tokenAlias = "mcp_token_$serverId"
         
@@ -23,7 +56,7 @@ class McpRepository(
         val server = McpServerEntity(
             id = serverId,
             name = name,
-            baseUrl = baseUrl,
+            endpointUrl = endpointUrl,
             tokenAlias = tokenAlias,
             enabled = true,
             createdAt = System.currentTimeMillis(),
@@ -42,22 +75,18 @@ class McpRepository(
         mcpDao.deleteServerById(serverId)
     }
 
-    suspend fun getEnabledServersSync(): List<McpServerEntity> {
-        return mcpDao.getEnabledServersSync()
-    }
-
     suspend fun getEnabledToolsForServer(serverId: String): List<McpToolEntity> {
         return mcpDao.getToolsForServerSync(serverId).filter { it.enabled }
     }
 
     suspend fun executeTool(serverId: String, toolName: String, argsJson: String): com.example.mcp.McpToolResult {
-        val server = mcpDao.getEnabledServersSync().find { it.id == serverId }
+        val server = getEnabledServersSync().find { it.id == serverId }
             ?: throw IllegalStateException("Server not found or disabled: $serverId")
         
         val config = McpServerConfig(
             id = server.id,
             name = server.name,
-            baseUrl = server.baseUrl,
+            endpointUrl = server.endpointUrl,
             tokenAlias = server.tokenAlias,
             enabled = server.enabled
         )
@@ -69,7 +98,7 @@ class McpRepository(
             val config = McpServerConfig(
                 id = server.id,
                 name = server.name,
-                baseUrl = server.baseUrl,
+                endpointUrl = server.endpointUrl,
                 tokenAlias = server.tokenAlias,
                 enabled = server.enabled
             )
