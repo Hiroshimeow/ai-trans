@@ -15,7 +15,12 @@ class LlmRouter(
     fun getAdapter(provider: LlmProvider): LlmAdapter {
         return when (provider.protocol) {
             ProviderProtocol.GeminiGenerateContent -> {
-                val apiKey = if (provider.apiKey.isNotEmpty()) provider.apiKey else if (BuildConfig.DEBUG) BuildConfig.GEMINI_API_KEY else ""
+                val apiKey = if (provider.apiKey.isNotEmpty()) {
+                    provider.apiKey
+                } else if (BuildConfig.DEBUG) {
+                    android.util.Log.w("LlmRouter", "WARNING: Falling back to BuildConfig.GEMINI_API_KEY. Config should provide the key.")
+                    BuildConfig.GEMINI_API_KEY
+                } else ""
                 GeminiAdapter(apiKey, mcpRepository)
             }
             ProviderProtocol.OpenAiChatCompletions,

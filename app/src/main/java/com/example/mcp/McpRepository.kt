@@ -170,7 +170,7 @@ class McpRepository(
             val nameCounts = tools.groupingBy { it.name }.eachCount()
             val toolEntities = tools.map { t ->
                 val isValidName = t.name.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_-]*\$"))
-                val isDuplicate = nameCounts[t.name] ?: 0 > 1
+                val isDuplicate = (nameCounts[t.name] ?: 0) > 1
                 
                 val statusMsg = when {
                     !isValidName -> "Invalid name. Use alias."
@@ -191,6 +191,10 @@ class McpRepository(
                 )
             }
             mcpDao.insertTools(toolEntities)
+            
+            // Run global validation for cross-server duplicates
+            ToolCatalogValidator.validateAndDisableDuplicates(mcpDao)
+            
             Result.success(Unit)
         } catch (e: Exception) {
             mcpDao.updateServer(

@@ -12,7 +12,13 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
 class RecordingService : Service() {
+
+    private val serviceScope = CoroutineScope(Dispatchers.IO)
 
     companion object {
         const val ACTION_START = "ACTION_START"
@@ -35,8 +41,14 @@ class RecordingService : Service() {
             ACTION_START -> {
                 isServiceRunning = true
                 startForeground(NOTIFICATION_ID, createNotification())
+                
+                val runtimeRepo = com.example.data.RuntimeConfigRepository(this)
+                val config = try { runtimeRepo.loadConfig() } catch (e: Exception) { null }
+                val sampleRate = config?.recording?.meeting?.sampleRate ?: 16000
+
                 if (!AudioRecorderHelper.getInstance(this).isRecording) {
                     AudioRecorderHelper.getInstance(this).isSilenceDetectionEnabled = false
+                    AudioRecorderHelper.getInstance(this).sampleRate = sampleRate
                     val file = AudioRecorderHelper.getInstance(this).startRecording()
                     if (file != null) {
                         val broadcastIntent = Intent(ACTION_RECORDING_STARTED)
@@ -46,12 +58,19 @@ class RecordingService : Service() {
                 }
             }
             ACTION_STOP -> {
-                if (AudioRecorderHelper.getInstance(this).isRecording) {
-                    AudioRecorderHelper.getInstance(this).stopRecording()
+                serviceScope.launch {
+                    if (AudioRecorderHelper.getInstance(this@RecordingService).isRecording) {
+                        val file = AudioRecorderHelper.getInstance(this@RecordingService).stopAndFinalize()
+                        if (file != null) {
+                            val broadcastIntent = Intent("com.example.audio.RECORDING_COMPLETED")
+                            broadcastIntent.putExtra(EXTRA_FILE_PATH, file.absolutePath)
+                            sendBroadcast(broadcastIntent)
+                        }
+                    }
+                    stopForeground(true)
+                    stopSelf()
                 }
                 isServiceRunning = false
-                stopForeground(true)
-                stopSelf()
             }
         }
         return START_NOT_STICKY

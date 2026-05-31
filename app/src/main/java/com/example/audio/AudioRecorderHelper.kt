@@ -46,7 +46,7 @@ class AudioRecorderHelper(
     var isSilenceDetectionEnabled = true
     var silenceThreshold = 0.012f // RMS threshold
     var maxSilenceSeconds = 3
-    private val sampleRate = 16000
+    var sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 

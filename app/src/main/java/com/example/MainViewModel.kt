@@ -14,6 +14,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
@@ -306,65 +307,68 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 title = "Họp ngày ${java.text.SimpleDateFormat("dd/MM HH:mm").format(java.util.Date())}",
                 mode = "meeting_record"
             )
-        }
-        
-        val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
-            action = RecordingService.ACTION_START
-        }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent)
-        } else {
-            context.startService(serviceIntent)
-        }
-        
-        recordingStatus.value = RecordingStatus.RECORDING
-        isRecordingAudio.value = true
-        liveSpeechResult.value = ""
-        
-        val useOnDevice = settingsManager.useOnDeviceRecognizer || true
-        if (useOnDevice) {
-            liveSpeechSegments.clear()
-            localSpeechHelper = OnDeviceSpeechHelper(context,
-                onEvent = { event ->
-                    when (event) {
-                        is TranscriptEvent.Partial -> {
-                            val combined = (liveSpeechSegments + event.text).joinToString(". ")
-                            liveSpeechResult.value = combined
-                            liveMeetingTranscript.value = combined
-                            saveLiveTranscriptSegment(event.text, false, liveSpeechSegments.size)
-                        }
-                        is TranscriptEvent.Final -> {
-                            liveSpeechSegments.add(event.text)
-                            val combined = liveSpeechSegments.joinToString(". ")
-                            liveSpeechResult.value = combined
-                            liveMeetingTranscript.value = combined
-                            saveLiveTranscriptSegment(event.text, true, liveSpeechSegments.size - 1)
-                        }
-                    }
-                },
-                onError = { err ->
-                    Log.e(tag, "Local SpeechRecognizer error: $err")
-                    if (err.contains("timeout", ignoreCase = true)) {
-                        recordingStatus.value = RecordingStatus.TIMEOUT
-                    } else {
-                        recordingStatus.value = RecordingStatus.ERROR
-                    }
+            
+            withContext(Dispatchers.Main) {
+                val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+                    action = RecordingService.ACTION_START
                 }
-            )
-            localSpeechHelper?.startListening(settingsManager.speechLanguage)
-        }
-        
-        viewModelScope.launch {
-            while (isRecordingAudio.value) {
-                recordingDurationMs.value = recorderHelper.durationMs
-                recordingRmsAmplitude.value = recorderHelper.currentRms
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+                
+                recordingStatus.value = RecordingStatus.RECORDING
+                isRecordingAudio.value = true
+                liveSpeechResult.value = ""
+                
+                val useOnDevice = settingsManager.useOnDeviceRecognizer || true
+                if (useOnDevice) {
+                    liveSpeechSegments.clear()
+                    localSpeechHelper = OnDeviceSpeechHelper(context,
+                        onEvent = { event ->
+                            when (event) {
+                                is TranscriptEvent.Partial -> {
+                                    val combined = (liveSpeechSegments + event.text).joinToString(". ")
+                                    liveSpeechResult.value = combined
+                                    liveMeetingTranscript.value = combined
+                                    saveLiveTranscriptSegment(event.text, false, liveSpeechSegments.size)
+                                }
+                                is TranscriptEvent.Final -> {
+                                    liveSpeechSegments.add(event.text)
+                                    val combined = liveSpeechSegments.joinToString(". ")
+                                    liveSpeechResult.value = combined
+                                    liveMeetingTranscript.value = combined
+                                    saveLiveTranscriptSegment(event.text, true, liveSpeechSegments.size - 1)
+                                }
+                            }
+                        },
+                        onError = { err ->
+                            Log.e(tag, "Local SpeechRecognizer error: $err")
+                            if (err.contains("timeout", ignoreCase = true)) {
+                                recordingStatus.value = RecordingStatus.TIMEOUT
+                            } else {
+                                recordingStatus.value = RecordingStatus.ERROR
+                            }
+                        }
+                    )
+                    localSpeechHelper?.startListening(settingsManager.speechLanguage)
+                }
+                
+                // Polling helper duration/rms (we can leave this for now or remove if we migrate entirely, but this gives immediate UI feedback)
+                launch {
+                    while (isRecordingAudio.value) {
+                        recordingDurationMs.value = recorderHelper.durationMs
+                        recordingRmsAmplitude.value = recorderHelper.currentRms
 
-                if (!recorderHelper.isRecording && recorderHelper.durationMs > 0) {
-                    recordAutoStoppedDueToSilence.value = true
-                    isRecordingAudio.value = false
-                    break
+                        if (!recorderHelper.isRecording && recorderHelper.durationMs > 0) {
+                            recordAutoStoppedDueToSilence.value = true
+                            isRecordingAudio.value = false
+                            break
+                        }
+                        delay(100)
+                    }
                 }
-                delay(100)
             }
         }
     }
@@ -377,12 +381,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             action = RecordingService.ACTION_STOP
         }
         context.startService(serviceIntent)
-
+        
         viewModelScope.launch {
-            val file = recorderHelper.stopAndFinalize()
             localSpeechHelper?.stopListening()
             localSpeechHelper = null
-            // onAutoStoppedListener takes care of handleCompletedRecording
+            // service will take care of finalization and onAutoStoppedListener takes care of handleCompletedRecording
         }
     }
 
@@ -398,11 +401,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         context.startService(serviceIntent)
         
         viewModelScope.launch {
-            val fileRecorded = recorderHelper.stopAndFinalize()
             localSpeechHelper?.stopListening()
             localSpeechHelper = null
             
-            fileRecorded?.let {
+            // Delete file via helper getter if it exists
+            recorderHelper.currentFile?.let {
                 if (it.exists()) {
                     it.delete()
                 }
@@ -439,72 +442,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 title = "Ghi âm ngày ${java.text.SimpleDateFormat("dd/MM HH:mm").format(java.util.Date())}",
                 mode = mode
             )
-        }
+            
+            withContext(Dispatchers.Main) {
+                val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+                    action = RecordingService.ACTION_START
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
 
-        val fileRecorded = recorderHelper.startRecording()
-        if (fileRecorded != null) {
-            val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
-                action = RecordingService.ACTION_START
-            }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
+                activeRecordingFile = recorderHelper.currentFile // service will create it
+                recordingStatus.value = RecordingStatus.RECORDING
+                isRecordingAudio.value = true
+                liveSpeechResult.value = ""
 
-            activeRecordingFile = fileRecorded
-            recordingStatus.value = RecordingStatus.RECORDING
-            isRecordingAudio.value = true
-            liveSpeechResult.value = ""
-
-            liveSpeechSegments.clear()
-            val useOnDevice = settingsManager.useOnDeviceRecognizer || isMeeting
-            if (useOnDevice) {
-                localSpeechHelper = OnDeviceSpeechHelper(context,
-                    onEvent = { event ->
-                        when (event) {
-                            is TranscriptEvent.Partial -> {
-                                val combined = (liveSpeechSegments + event.text).joinToString(". ")
-                                liveSpeechResult.value = combined
-                                if (isMeetingActive.value) {
-                                    liveMeetingTranscript.value = combined
+                liveSpeechSegments.clear()
+                val useOnDevice = settingsManager.useOnDeviceRecognizer || isMeeting
+                if (useOnDevice) {
+                    localSpeechHelper = OnDeviceSpeechHelper(context,
+                        onEvent = { event ->
+                            when (event) {
+                                is TranscriptEvent.Partial -> {
+                                    val combined = (liveSpeechSegments + event.text).joinToString(". ")
+                                    liveSpeechResult.value = combined
+                                    if (isMeetingActive.value) {
+                                        liveMeetingTranscript.value = combined
+                                    }
+                                    saveLiveTranscriptSegment(event.text, false, liveSpeechSegments.size)
                                 }
-                                saveLiveTranscriptSegment(event.text, false, liveSpeechSegments.size)
+                                is TranscriptEvent.Final -> {
+                                    liveSpeechSegments.add(event.text)
+                                    val combined = liveSpeechSegments.joinToString(". ")
+                                    liveSpeechResult.value = combined
+                                    if (isMeetingActive.value) {
+                                        liveMeetingTranscript.value = combined
+                                    }
+                                    saveLiveTranscriptSegment(event.text, true, liveSpeechSegments.size - 1)
+                                }
                             }
-                            is TranscriptEvent.Final -> {
-                                liveSpeechSegments.add(event.text)
-                                val combined = liveSpeechSegments.joinToString(". ")
-                                liveSpeechResult.value = combined
-                                if (isMeetingActive.value) {
-                                    liveMeetingTranscript.value = combined
-                                }
-                                saveLiveTranscriptSegment(event.text, true, liveSpeechSegments.size - 1)
+                        },
+                        onError = { err ->
+                            Log.e(tag, "Local SpeechRecognizer error: $err")
+                            if (err.contains("timeout", ignoreCase = true)) {
+                                recordingStatus.value = RecordingStatus.TIMEOUT
+                            } else {
+                                recordingStatus.value = RecordingStatus.ERROR
                             }
                         }
-                    },
-                    onError = { err ->
-                        Log.e(tag, "Local SpeechRecognizer error: $err")
-                        if (err.contains("timeout", ignoreCase = true)) {
-                            recordingStatus.value = RecordingStatus.TIMEOUT
-                        } else {
-                            recordingStatus.value = RecordingStatus.ERROR
+                    )
+                    localSpeechHelper?.startListening(settingsManager.speechLanguage)
+                }
+
+                launch {
+                    while (isRecordingAudio.value) {
+                        recordingDurationMs.value = recorderHelper.durationMs
+                        recordingRmsAmplitude.value = recorderHelper.currentRms
+
+                        if (!recorderHelper.isRecording) {
+                            recordAutoStoppedDueToSilence.value = true
+                            isRecordingAudio.value = false
+                            break
                         }
+                        delay(100)
                     }
-                )
-                localSpeechHelper?.startListening(settingsManager.speechLanguage)
-            }
-
-            viewModelScope.launch {
-                while (isRecordingAudio.value && recorderHelper.isRecording) {
-                    recordingDurationMs.value = recorderHelper.durationMs
-                    recordingRmsAmplitude.value = recorderHelper.currentRms
-
-                    if (!recorderHelper.isRecording) {
-                        recordAutoStoppedDueToSilence.value = true
-                        isRecordingAudio.value = false
-                        break
-                    }
-                    delay(100)
                 }
             }
         }
@@ -520,7 +522,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         context.startService(serviceIntent)
         
         viewModelScope.launch {
-            recorderHelper.stopAndFinalize()
             localSpeechHelper?.stopListening()
             localSpeechHelper = null
         }

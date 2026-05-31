@@ -88,7 +88,7 @@ object OpenAiRetrofitClient {
 
     val service: OpenAiApiService by lazy {
         val retrofit = Retrofit.Builder()
-            .baseUrl("https://api.openai.com/") // Default, overridden via @Url
+            .baseUrl("http://localhost/") // Placeholder, strictly overridden via @Url
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
