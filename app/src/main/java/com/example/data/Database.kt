@@ -267,6 +267,9 @@ interface TranscriptSegmentDao {
 
     @Query("DELETE FROM transcript_segments WHERE recordingSessionId = :recordingSessionId")
     suspend fun deleteSegmentsBySessionId(recordingSessionId: String)
+    
+    @Query("DELETE FROM transcript_segments WHERE id = :id")
+    suspend fun deleteSegmentById(id: String)
 }
 
 @Dao

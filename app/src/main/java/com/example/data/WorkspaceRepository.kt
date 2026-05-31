@@ -103,12 +103,12 @@ class WorkspaceRepository(
         // Snapshot active settings from RuntimeConfig
         val runtimeConfigRepo = com.example.data.RuntimeConfigRepository(context)
         val config = try { runtimeConfigRepo.loadConfig() } catch (e: Exception) { null }
-        val activeId = config?.providers?.defaultProviderId ?: "gemini"
+        val activeId = config?.providers?.defaultProviderId
         val pItem = config?.providers?.items?.find { it.id == activeId }
         
         val endpoint = pItem?.endpoint ?: ""
         val model = pItem?.models?.chat ?: ""
-        val provider = pItem?.id ?: activeId
+        val provider = pItem?.id ?: activeId ?: "unknown"
         val apiKeyAlias = pItem?.apiKeyAlias ?: ""
         val maxTokens = 4096
 
@@ -354,6 +354,11 @@ class WorkspaceRepository(
 
     // --- Recordings Management ---
     suspend fun createLiveRecordingSession(sessionId: String, title: String, mode: String) = withContext(Dispatchers.IO) {
+        val runtimeConfigRepo = com.example.data.RuntimeConfigRepository(context)
+        val config = try { runtimeConfigRepo.loadConfig() } catch (e: Exception) { null }
+        val sttProviderId = config?.providers?.defaultProviderId ?: "unknown"
+        val language = "vi"
+
         val sessionEntity = RecordingSessionEntity(
             id = sessionId,
             workspaceSessionId = null,
@@ -365,8 +370,8 @@ class WorkspaceRepository(
             durationMs = 0L,
             status = "recording",
             stopReason = null,
-            providerId = "gemini",
-            language = "vi",
+            providerId = sttProviderId,
+            language = language,
             finalTranscript = null,
             summary = null,
             actionItemsJson = null,
@@ -393,6 +398,9 @@ class WorkspaceRepository(
             createdAt = System.currentTimeMillis()
         )
         database.transcriptSegmentDao().insertSegments(listOf(segment))
+        if (isFinal) {
+            database.transcriptSegmentDao().deleteSegmentById("${sessionId}_partial")
+        }
     }
 
     suspend fun saveCompletedRecording(sessionId: String, audioFile: File, durationSeconds: Double, transcriptJson: String, isMeeting: Boolean = false, isVoiceQuestion: Boolean = false) = withContext(Dispatchers.IO) {
@@ -416,15 +424,25 @@ class WorkspaceRepository(
         }
 
         // Populate new RecordingSessionEntity for modern tracking as requested by the architecture verdict
-        val mode = when {
+        val existingSession = database.recordingSessionDao().getRecordingSessionById(id)
+        val mode = existingSession?.mode ?: when {
             isMeeting -> "meeting_record"
             isVoiceQuestion -> "quick_voice_note"
             else -> "float_quick_ask"
         }
-        val sessionEntity = RecordingSessionEntity(
+        val title = existingSession?.title ?: if (isMeeting) "Họp ngày ${java.text.SimpleDateFormat("dd/MM HH:mm").format(java.util.Date())}" else "Ghi âm ngày ${java.text.SimpleDateFormat("dd/MM HH:mm").format(java.util.Date())}"
+        
+        val sessionEntity = existingSession?.copy(
+            audioPath = audioFile.absolutePath,
+            endedAt = System.currentTimeMillis(),
+            durationMs = (durationSeconds * 1000).toLong(),
+            status = "completed",
+            stopReason = "manual",
+            finalTranscript = plainText
+        ) ?: RecordingSessionEntity(
             id = id,
             workspaceSessionId = null,
-            title = if (isMeeting) "Họp ngày ${java.text.SimpleDateFormat("dd/MM HH:mm").format(java.util.Date())}" else "Ghi âm ngày ${java.text.SimpleDateFormat("dd/MM HH:mm").format(java.util.Date())}",
+            title = title,
             mode = mode,
             audioPath = audioFile.absolutePath,
             startedAt = System.currentTimeMillis() - (durationSeconds * 1000).toLong(),
@@ -432,7 +450,7 @@ class WorkspaceRepository(
             durationMs = (durationSeconds * 1000).toLong(),
             status = "completed",
             stopReason = "manual",
-            providerId = "gemini",
+            providerId = "unknown",
             language = "vi",
             finalTranscript = plainText,
             summary = null,

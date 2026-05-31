@@ -45,11 +45,20 @@ class RecordingService : Service() {
                 val runtimeRepo = com.example.data.RuntimeConfigRepository(this)
                 val config = try { runtimeRepo.loadConfig() } catch (e: Exception) { null }
                 val sampleRate = config?.recording?.meeting?.sampleRate ?: 16000
+                val sessionId = intent.getStringExtra("EXTRA_SESSION_ID") ?: ""
+                val isMeeting = intent.getBooleanExtra("EXTRA_IS_MEETING", true)
+                val autoStop = intent.getBooleanExtra("EXTRA_AUTO_STOP", false)
+                val threshold = intent.getFloatExtra("EXTRA_THRESHOLD", 0.012f)
+                val maxSecs = intent.getIntExtra("EXTRA_MAX_SECS", 3)
 
-                if (!AudioRecorderHelper.getInstance(this).isRecording) {
-                    AudioRecorderHelper.getInstance(this).isSilenceDetectionEnabled = false
-                    AudioRecorderHelper.getInstance(this).sampleRate = sampleRate
-                    val file = AudioRecorderHelper.getInstance(this).startRecording()
+                val controller = RecordingController.getInstance(this)
+                if (controller.recordingState.value.state == RecordingState.IDLE) {
+                    if (isMeeting) {
+                        controller.startMeeting(sessionId, sampleRate)
+                    } else {
+                        controller.startQuickVoice(sessionId, sampleRate, autoStop, threshold, maxSecs)
+                    }
+                    val file = AudioRecorderHelper.getInstance(this).currentFile
                     if (file != null) {
                         val broadcastIntent = Intent(ACTION_RECORDING_STARTED)
                         broadcastIntent.putExtra(EXTRA_FILE_PATH, file.absolutePath)
@@ -59,8 +68,10 @@ class RecordingService : Service() {
             }
             ACTION_STOP -> {
                 serviceScope.launch {
-                    if (AudioRecorderHelper.getInstance(this@RecordingService).isRecording) {
-                        val file = AudioRecorderHelper.getInstance(this@RecordingService).stopAndFinalize()
+                    val controller = RecordingController.getInstance(this@RecordingService)
+                    if (controller.recordingState.value.state == RecordingState.MEETING || 
+                        controller.recordingState.value.state == RecordingState.QUICK_VOICE) {
+                        val file = controller.stopAndFinalize()
                         if (file != null) {
                             val broadcastIntent = Intent("com.example.audio.RECORDING_COMPLETED")
                             broadcastIntent.putExtra(EXTRA_FILE_PATH, file.absolutePath)

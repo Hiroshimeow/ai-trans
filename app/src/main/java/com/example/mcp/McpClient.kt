@@ -28,7 +28,7 @@ class McpClientImpl(
         if (server.tokenAlias.isBlank()) return ""
         val secret = credentialStore.getSecret(server.tokenAlias)
         if (secret.isNullOrBlank()) {
-            throw Exception("CredentialMissing: Secret not found for testing MCP server alias: ${server.tokenAlias}")
+            throw Exception("CredentialMissing: Secret not found for MCP token alias: ${server.tokenAlias}")
         }
         return secret
     }

@@ -33,7 +33,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val llmRouter = com.example.llm.LlmRouter(context, settingsManager, mcpRepository)
     private val repository = WorkspaceRepository(context, database, llmRouter)
 
-    private val recorderHelper = AudioRecorderHelper.getInstance(context)
+    private val controller = com.example.audio.RecordingController.getInstance(context)
     private val playerHelper = AudioPlayerHelper()
     private val ttsHelper = TtsHelper(context)
     private var localSpeechHelper: OnDeviceSpeechHelper? = null
@@ -113,16 +113,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Configure recorder listeners
-        recorderHelper.onAutoStoppedListener = { wavFile ->
+        controller.onAutoStoppedListener = { wavFile ->
             viewModelScope.launch {
                 if (recordingStatus.value != RecordingStatus.SKIPPED) {
                     handleCompletedRecording(wavFile)
                 }
             }
         }
-        recorderHelper.onErrorListener = { errorMsg ->
+        controller.onErrorListener = { errorMsg ->
             isRecordingAudio.value = false
             errorString.value = errorMsg
+        }
+        controller.onSilenceStopped = {
+            recordAutoStoppedDueToSilence.value = true
+            isRecordingAudio.value = false
+        }
+        
+        viewModelScope.launch {
+            controller.recordingState.collect { state ->
+                recordingDurationMs.value = state.durationMs
+                recordingRmsAmplitude.value = state.rmsAmplitude
+                if (state.state == com.example.audio.RecordingState.IDLE && isRecordingAudio.value && !recordAutoStoppedDueToSilence.value) {
+                    isRecordingAudio.value = false
+                }
+            }
         }
 
         playerHelper.onPlaybackCompleteListener = {
@@ -311,6 +325,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.Main) {
                 val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
                     action = RecordingService.ACTION_START
+                    putExtra("EXTRA_SESSION_ID", currentSessionId)
+                    putExtra("EXTRA_IS_MEETING", true)
                 }
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     context.startForegroundService(serviceIntent)
@@ -354,21 +370,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     localSpeechHelper?.startListening(settingsManager.speechLanguage)
                 }
-                
-                // Polling helper duration/rms (we can leave this for now or remove if we migrate entirely, but this gives immediate UI feedback)
-                launch {
-                    while (isRecordingAudio.value) {
-                        recordingDurationMs.value = recorderHelper.durationMs
-                        recordingRmsAmplitude.value = recorderHelper.currentRms
-
-                        if (!recorderHelper.isRecording && recorderHelper.durationMs > 0) {
-                            recordAutoStoppedDueToSilence.value = true
-                            isRecordingAudio.value = false
-                            break
-                        }
-                        delay(100)
-                    }
-                }
             }
         }
     }
@@ -403,13 +404,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             localSpeechHelper?.stopListening()
             localSpeechHelper = null
-            
-            // Delete file via helper getter if it exists
-            recorderHelper.currentFile?.let {
-                if (it.exists()) {
-                    it.delete()
-                }
-            }
+            controller.cancelRecording()
         }
     }
 
@@ -419,17 +414,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val isMeeting = isMeetingActive.value
         val isVoiceQ = isRecordingVoiceQuestion.value
-        if (isMeeting) {
-            recorderHelper.isSilenceDetectionEnabled = false
-        } else if (isVoiceQ) {
-            recorderHelper.isSilenceDetectionEnabled = true
-            recorderHelper.silenceThreshold = settingsManager.silenceThreshold
-            recorderHelper.maxSilenceSeconds = settingsManager.maxSilenceSeconds
-        } else {
-            recorderHelper.isSilenceDetectionEnabled = settingsManager.autoStopSilenceEnabled
-            recorderHelper.silenceThreshold = settingsManager.silenceThreshold
-            recorderHelper.maxSilenceSeconds = settingsManager.maxSilenceSeconds
-        }
+        
+        val autoStop = if (isMeeting) false else if (isVoiceQ) true else settingsManager.autoStopSilenceEnabled
+        val threshold = settingsManager.silenceThreshold
+        val maxSeconds = settingsManager.maxSilenceSeconds
 
         recordAutoStoppedDueToSilence.value = false
         val currentSessionId = UUID.randomUUID().toString()
@@ -446,6 +434,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.Main) {
                 val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
                     action = RecordingService.ACTION_START
+                    putExtra("EXTRA_SESSION_ID", currentSessionId)
+                    putExtra("EXTRA_IS_MEETING", isMeeting)
+                    putExtra("EXTRA_AUTO_STOP", autoStop)
+                    putExtra("EXTRA_THRESHOLD", threshold)
+                    putExtra("EXTRA_MAX_SECS", maxSeconds)
                 }
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     context.startForegroundService(serviceIntent)
@@ -453,7 +446,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     context.startService(serviceIntent)
                 }
 
-                activeRecordingFile = recorderHelper.currentFile // service will create it
                 recordingStatus.value = RecordingStatus.RECORDING
                 isRecordingAudio.value = true
                 liveSpeechResult.value = ""
@@ -493,20 +485,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     )
                     localSpeechHelper?.startListening(settingsManager.speechLanguage)
-                }
-
-                launch {
-                    while (isRecordingAudio.value) {
-                        recordingDurationMs.value = recorderHelper.durationMs
-                        recordingRmsAmplitude.value = recorderHelper.currentRms
-
-                        if (!recorderHelper.isRecording) {
-                            recordAutoStoppedDueToSilence.value = true
-                            isRecordingAudio.value = false
-                            break
-                        }
-                        delay(100)
-                    }
                 }
             }
         }

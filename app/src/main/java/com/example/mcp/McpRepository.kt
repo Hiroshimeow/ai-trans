@@ -5,6 +5,7 @@ import com.example.data.McpDao
 import com.example.data.McpServerEntity
 import com.example.data.McpToolEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 class McpRepository(
@@ -14,27 +15,48 @@ class McpRepository(
     private val credentialStore: CredentialStore,
     private val runtimeConfigRepo: com.example.data.RuntimeConfigRepository
 ) {
-    fun getAllServersFlow(): Flow<List<McpServerEntity>> = mcpDao.getAllServersFlow()
+    fun getAllServersFlow(): Flow<List<McpServerEntity>> = mcpDao.getAllServersFlow().map { dbServers ->
+        try {
+            val configServers = getConfigServers()
+            val merged = mutableListOf<McpServerEntity>()
+            merged.addAll(configServers)
+            dbServers.forEach { db ->
+                if (merged.none { it.id == db.id } && merged.none { it.endpointUrl == db.endpointUrl }) {
+                    merged.add(db)
+                }
+            }
+            merged
+        } catch (e: Exception) {
+            val errorServer = McpServerEntity(
+                id = "config_error",
+                name = "CONFIG ERROR",
+                endpointUrl = "See runtime config",
+                tokenAlias = "internal_error",
+                enabled = false,
+                createdAt = 0L,
+                updatedAt = 0L,
+                lastConnectedAt = null,
+                lastError = e.message ?: "Configuration Error"
+            )
+            listOf(errorServer) + dbServers
+        }
+    }
     fun getToolsForServerFlow(serverId: String): Flow<List<McpToolEntity>> = mcpDao.getToolsForServerFlow(serverId)
 
     private fun getConfigServers(): List<McpServerEntity> {
-        return try {
-            val config = runtimeConfigRepo.loadConfig()
-            config.mcp.servers.filter { it.enabled }.map {
-                McpServerEntity(
-                    id = it.id.ifEmpty { java.util.UUID.nameUUIDFromBytes(it.endpoint.toByteArray()).toString() },
-                    name = it.name.ifEmpty { "Configured Server" },
-                    endpointUrl = it.endpoint,
-                    tokenAlias = it.tokenAlias,
-                    enabled = it.enabled,
-                    createdAt = 0L,
-                    updatedAt = 0L,
-                    lastConnectedAt = null,
-                    lastError = null
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
+        val config = runtimeConfigRepo.loadConfig()
+        return config.mcp.servers.filter { it.enabled }.map {
+            McpServerEntity(
+                id = it.id.ifEmpty { java.util.UUID.nameUUIDFromBytes(it.endpoint.toByteArray()).toString() },
+                name = it.name.ifEmpty { "Configured Server" },
+                endpointUrl = it.endpoint,
+                tokenAlias = it.tokenAlias,
+                enabled = it.enabled,
+                createdAt = 0L,
+                updatedAt = 0L,
+                lastConnectedAt = null,
+                lastError = null
+            )
         }
     }
 
