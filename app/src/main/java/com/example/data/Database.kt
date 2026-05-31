@@ -177,6 +177,9 @@ interface RecordingDao {
     @Query("SELECT * FROM recordings ORDER BY createdAt DESC")
     fun getRecordingsFlow(): Flow<List<RecordingEntity>>
 
+    @Query("SELECT * FROM recordings WHERE id = :id LIMIT 1")
+    suspend fun getRecordingById(id: String): RecordingEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecording(recording: RecordingEntity)
 
@@ -524,6 +527,13 @@ abstract class AppDatabase : RoomDatabase() {
                         PRIMARY KEY(`id`)
                     )
                 """.trimIndent())
+                
+                try {
+                    db.execSQL("ALTER TABLE `mcp_tools` ADD COLUMN `status` TEXT")
+                    db.execSQL("ALTER TABLE `mcp_tools` ADD COLUMN `errorMessage` TEXT")
+                } catch (e: Exception) {
+                    // Ignore if already exists (in case it was partially added)
+                }
             }
         }
 

@@ -121,9 +121,14 @@ class McpRepository(
 
         // Policy Check
         val lowerName = toolName.lowercase()
-        val isDestructive = lowerName.contains("shell") || lowerName.contains("delete") || 
-                            lowerName.contains("move") || lowerName.contains("write") || 
-                            lowerName.contains("push") || lowerName.contains("execute")
+        val words = lowerName.split("_", "-")
+        val destructiveVerbs = listOf(
+            "delete", "remove", "write", "edit", "update", "replace", 
+            "push", "drop", "create", "insert", "execute", "run", "move"
+        )
+        val destructiveExact = listOf("shell_exec", "eval", "bash")
+        
+        val isDestructive = destructiveExact.contains(lowerName) || words.any { it in destructiveVerbs }
 
         val callId = UUID.randomUUID().toString()
         val toolCall = com.example.data.ToolCallEntity(

@@ -29,11 +29,7 @@ class OpenAiAdapter(
             throw IllegalStateException("API Endpoint URL is not configured.")
         }
 
-        val resolvedEndpoint = if (endpointUrl.endsWith("/chat/completions")) {
-            endpointUrl
-        } else {
-            if (endpointUrl.endsWith("/")) "\${endpointUrl}chat/completions" else "\$endpointUrl/chat/completions"
-        }
+        val resolvedEndpoint = endpointUrl
 
         val authHeader = "Bearer \$apiKey"
         val requestMessages = mutableListOf<OpenAiMessage>()

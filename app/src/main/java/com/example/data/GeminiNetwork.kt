@@ -100,7 +100,7 @@ interface GeminiApiService {
 }
 
 object GeminiRetrofitClient {
-    private const val BASE_URL = "https://generativelanguage.googleapis.com/"
+    private const val DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/"
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -119,12 +119,14 @@ object GeminiRetrofitClient {
         .addLast(KotlinJsonAdapterFactory())
         .build()
 
-    val service: GeminiApiService by lazy {
+    fun getService(baseUrl: String?): GeminiApiService {
+        val url = if (baseUrl.isNullOrBlank()) DEFAULT_BASE_URL else baseUrl
+        val safeBaseUrl = if (url.endsWith("/")) url else "$url/"
         val retrofit = Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(safeBaseUrl)
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
-        retrofit.create(GeminiApiService::class.java)
+        return retrofit.create(GeminiApiService::class.java)
     }
 }

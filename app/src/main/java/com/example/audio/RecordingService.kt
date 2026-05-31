@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class RecordingService : Service() {
+    private var localSpeechHelper: OnDeviceSpeechHelper? = null
+    private var segmentIndex = 0
 
     private val serviceScope = CoroutineScope(Dispatchers.IO)
 
@@ -43,8 +45,15 @@ class RecordingService : Service() {
                     is RecordingEvent.AutoStopped -> {
                         val file = event.file
                         val sessionId = event.sessionId
+                        
+                        localSpeechHelper?.stopListening()
+                        localSpeechHelper = null
+                        segmentIndex = 0
+                        
                         if (file != null && sessionId != null) {
-                            val durationSecs = file.length() / (16000.0 * 2.0)
+                            val sampleRate = AudioRecorderHelper.getInstance(this@RecordingService).sampleRate
+                            val bytesPerSec = sampleRate * 2.0
+                            val durationSecs = file.length() / bytesPerSec
                             val db = com.example.data.AppDatabase.getDatabase(this@RecordingService)
                             val sessionEntity = db.recordingSessionDao().getRecordingSessionById(sessionId)
                             if (sessionEntity != null) {
@@ -64,26 +73,12 @@ class RecordingService : Service() {
                                         finalTranscript = transcriptText.ifBlank { sessionEntity.finalTranscript }
                                     )
                                 )
-                                val root = org.json.JSONObject()
-                                root.put("source", "OnDevice")
-                                val meta = org.json.JSONObject()
-                                meta.put("duration", durationSecs.toString())
-                                meta.put("date", System.currentTimeMillis().toString())
-                                root.put("metadata", meta)
-                                
-                                val segsArray = org.json.JSONArray()
-                                val segObj = org.json.JSONObject()
-                                segObj.put("text", transcriptText)
-                                segObj.put("timestampMs", 0L)
-                                segsArray.put(segObj)
-                                root.put("segments", segsArray)
-                                val jsonStr = root.toString()
 
                                 val recording = com.example.data.RecordingEntity(
                                     id = sessionId,
                                     audioPath = file.absolutePath,
                                     durationSeconds = durationSecs,
-                                    transcript = jsonStr,
+                                    transcript = "",
                                     createdAt = System.currentTimeMillis(),
                                     error = null
                                 )
@@ -139,6 +134,26 @@ class RecordingService : Service() {
                     } else {
                         controller.startQuickVoice(sessionId, sampleRate, autoStop, threshold, maxSecs)
                     }
+                    
+                    val useLocal = com.example.data.SettingsManager(this).useOnDeviceRecognizer || isMeeting
+                    if (useLocal) {
+                        localSpeechHelper = OnDeviceSpeechHelper(this,
+                            onEvent = { event ->
+                                when (event) {
+                                    is TranscriptEvent.Partial -> {
+                                        saveLiveTranscriptSegment(sessionId, event.text, false, segmentIndex)
+                                    }
+                                    is TranscriptEvent.Final -> {
+                                        saveLiveTranscriptSegment(sessionId, event.text, true, segmentIndex)
+                                        segmentIndex++
+                                    }
+                                }
+                            },
+                            onError = { }
+                        )
+                        localSpeechHelper?.startListening(com.example.data.SettingsManager(this).speechLanguage)
+                    }
+                    
                     val file = AudioRecorderHelper.getInstance(this).currentFile
                     if (file != null) {
                         val broadcastIntent = Intent(ACTION_RECORDING_STARTED)
@@ -155,60 +170,78 @@ class RecordingService : Service() {
                     val durationMs = controller.recordingState.value.durationMs
                     
                     if (currentState == RecordingState.MEETING || currentState == RecordingState.QUICK_VOICE) {
-                        val file = controller.stopAndFinalize()
-                        if (file != null && sessionId != null) {
-                            val durationSecs = if (durationMs > 0) durationMs / 1000.0 else file.length() / (16000.0 * 2.0)
-                            val finalDurationMs = if (durationMs > 0) durationMs else (durationSecs * 1000).toLong()
-                            
-                            val db = com.example.data.AppDatabase.getDatabase(this@RecordingService)
-                            val sessionEntity = db.recordingSessionDao().getRecordingSessionById(sessionId)
-                            if (sessionEntity != null) {
-                                val transcriptText = db.transcriptSegmentDao()
-                                    .getSegmentsForSessionSync(sessionId)
-                                    .filter { it.isFinal }
-                                    .sortedBy { it.index }
-                                    .joinToString("\n") { it.text }
-
-                                db.recordingSessionDao().updateRecordingSession(
-                                    sessionEntity.copy(
-                                        status = "completed",
-                                        stopReason = "manual",
-                                        endedAt = System.currentTimeMillis(),
-                                        durationMs = finalDurationMs,
-                                        audioPath = file.absolutePath,
-                                        finalTranscript = transcriptText.ifBlank { sessionEntity.finalTranscript }
-                                    )
-                                )
-                                val root = org.json.JSONObject()
-                                root.put("source", "OnDevice")
-                                val meta = org.json.JSONObject()
-                                meta.put("duration", durationSecs.toString())
-                                meta.put("date", System.currentTimeMillis().toString())
-                                root.put("metadata", meta)
-                                
-                                val segsArray = org.json.JSONArray()
-                                val segObj = org.json.JSONObject()
-                                segObj.put("text", transcriptText)
-                                segObj.put("timestampMs", 0L)
-                                segsArray.put(segObj)
-                                root.put("segments", segsArray)
-                                val jsonStr = root.toString()
-
-                                val recording = com.example.data.RecordingEntity(
-                                    id = sessionId,
-                                    audioPath = file.absolutePath,
-                                    durationSeconds = durationSecs,
-                                    transcript = jsonStr,
-                                    createdAt = System.currentTimeMillis(),
-                                    error = null
-                                )
-                                db.recordingDao().insertRecording(recording)
+                        val result = controller.stopAndFinalize()
+                        val db = com.example.data.AppDatabase.getDatabase(this@RecordingService)
+                        
+                        localSpeechHelper?.stopListening()
+                        localSpeechHelper = null
+                        segmentIndex = 0
+                        
+                        when (result) {
+                            is AudioRecorderHelper.FinalizeResult.Success -> {
+                                val file = result.file
+                                if (sessionId != null) {
+                                    val sampleRate = AudioRecorderHelper.getInstance(this@RecordingService).sampleRate
+                                    val bytesPerSec = sampleRate * 2.0
+                                    val durationSecs = if (durationMs > 0) durationMs / 1000.0 else file.length() / bytesPerSec
+                                    val finalDurationMs = if (durationMs > 0) durationMs else (durationSecs * 1000).toLong()
+                                    
+                                    val sessionEntity = db.recordingSessionDao().getRecordingSessionById(sessionId)
+                                    if (sessionEntity != null) {
+                                        val transcriptText = db.transcriptSegmentDao()
+                                            .getSegmentsForSessionSync(sessionId)
+                                            .filter { it.isFinal }
+                                            .sortedBy { it.index }
+                                            .joinToString("\n") { it.text }
+        
+                                        db.recordingSessionDao().updateRecordingSession(
+                                            sessionEntity.copy(
+                                                status = "completed",
+                                                stopReason = "manual",
+                                                endedAt = System.currentTimeMillis(),
+                                                durationMs = finalDurationMs,
+                                                audioPath = file.absolutePath,
+                                                finalTranscript = transcriptText.ifBlank { sessionEntity.finalTranscript }
+                                            )
+                                        )
+        
+                                        val recording = com.example.data.RecordingEntity(
+                                            id = sessionId,
+                                            audioPath = file.absolutePath,
+                                            durationSeconds = durationSecs,
+                                            transcript = "",
+                                            createdAt = System.currentTimeMillis(),
+                                            error = null
+                                        )
+                                        db.recordingDao().insertRecording(recording)
+                                    }
+                                    
+                                    val broadcastIntent = Intent(ACTION_RECORDING_COMPLETED)
+                                    broadcastIntent.putExtra(EXTRA_FILE_PATH, file.absolutePath)
+                                    broadcastIntent.putExtra("EXTRA_SESSION_ID", sessionId)
+                                    sendBroadcast(broadcastIntent)
+                                }
                             }
-                            
-                            val broadcastIntent = Intent(ACTION_RECORDING_COMPLETED)
-                            broadcastIntent.putExtra(EXTRA_FILE_PATH, file.absolutePath)
-                            broadcastIntent.putExtra("EXTRA_SESSION_ID", sessionId)
-                            sendBroadcast(broadcastIntent)
+                            is AudioRecorderHelper.FinalizeResult.Timeout -> {
+                                if (sessionId != null) {
+                                    val sessionEntity = db.recordingSessionDao().getRecordingSessionById(sessionId)
+                                    if (sessionEntity != null) {
+                                        db.recordingSessionDao().updateRecordingSession(
+                                            sessionEntity.copy(
+                                                status = "failed",
+                                                stopReason = "timeout",
+                                                endedAt = System.currentTimeMillis(),
+                                                errorCode = "RecordingFinalizeTimeout"
+                                            )
+                                        )
+                                    }
+                                    val broadcastIntent = Intent(ACTION_RECORDING_COMPLETED)
+                                    broadcastIntent.putExtra("ERROR_MESSAGE", "Finalization Timeout")
+                                    broadcastIntent.putExtra("EXTRA_SESSION_ID", sessionId)
+                                    sendBroadcast(broadcastIntent)
+                                }
+                            }
+                            is AudioRecorderHelper.FinalizeResult.Error -> {}
                         }
                     }
                     stopForeground(true)
@@ -217,6 +250,10 @@ class RecordingService : Service() {
                 isServiceRunning = false
             }
             ACTION_CANCEL -> {
+                localSpeechHelper?.stopListening()
+                localSpeechHelper = null
+                segmentIndex = 0
+                
                 val controller = RecordingController.getInstance(this@RecordingService)
                 val sessionId = controller.recordingState.value.sessionId
                 controller.cancelRecording()
@@ -293,5 +330,29 @@ class RecordingService : Service() {
             .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
             .setOngoing(true)
             .build()
+    }
+
+    private fun saveLiveTranscriptSegment(sessionId: String, text: String, isFinal: Boolean, index: Int) {
+         serviceScope.launch {
+             val db = com.example.data.AppDatabase.getDatabase(this@RecordingService)
+             db.transcriptSegmentDao().insertSegments(
+                 listOf(
+                     com.example.data.TranscriptSegmentEntity(
+                         id = "${sessionId}_seg_${index}",
+                         recordingSessionId = sessionId,
+                         index = index,
+                         startMs = null,
+                         endMs = null,
+                         text = text,
+                         isFinal = isFinal,
+                         speakerLabel = null,
+                         language = null,
+                         confidence = null,
+                         source = "on_device_live",
+                         createdAt = System.currentTimeMillis()
+                     )
+                 )
+             )
+         }
     }
 }

@@ -16,8 +16,8 @@ This application is actively being refactored towards Clean Architecture princip
 * **No Overlay/OCR Services**: This application does not include screenshot parsing, OCR, or active screen-overlay systems.
 
 ### B. Meeting Recorder (Prototype)
-* **Recording System**: Uses standard Android AudioRecord with a foreground service. Stop behavior handles file finalization and broadcast, but edge-case recovery and chunking from process deaths during recording remains a work in progress.
-* **Platform STT Draft**: Integrates the Android `SpeechRecognizer` to stream incremental draft segments. Offline local STT is not guaranteed and depends entirely on the device's capability and network availability.
+* **Recording System**: Uses standard Android AudioRecord with a foreground service. Stop behavior is fully deterministic, returning Success/Timeout/Error. Edge-case recovery and chunking from process deaths during recording remains a work in progress.
+* **Platform STT Draft**: Integrating the Android `SpeechRecognizer` to stream incremental draft segments. The STT logic is run inside the background service making it fully Service-owned. Offline local STT depends entirely on the device's capability and network availability.
 * **Data-Flush**: Live draft segments are immediately stored in Room tracking `TranscriptSegmentEntity`.
 
 ### C. Multimodal & LLM Integration

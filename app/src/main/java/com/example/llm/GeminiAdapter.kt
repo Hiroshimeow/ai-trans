@@ -8,6 +8,7 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 
 class GeminiAdapter(
+    private val endpointUrl: String?,
     private val apiKey: String,
     private val mcpRepository: com.example.mcp.McpRepository
 ) : LlmAdapter {
@@ -116,7 +117,8 @@ class GeminiAdapter(
         var maxIterations = 5
         while (maxIterations > 0) {
             maxIterations--
-            val response = GeminiRetrofitClient.service.generateContent(request.modelToUse, apiKey, apiRequest)
+            val service = GeminiRetrofitClient.getService(endpointUrl)
+            val response = service.generateContent(request.modelToUse, apiKey, apiRequest)
             
             if (response.error != null) {
                 throw IOException("Gemini API Error: \${response.error.message}")
@@ -176,7 +178,8 @@ class GeminiAdapter(
             generationConfig = GenerationConfig(temperature = 0.1f)
         )
 
-        val response = GeminiRetrofitClient.service.generateContent(model, apiKey, request)
+        val service = GeminiRetrofitClient.getService(endpointUrl)
+        val response = service.generateContent(model, apiKey, request)
         return@withContext response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim() 
             ?: throw IOException("Empty transcript from Gemini")
     }
@@ -202,7 +205,8 @@ NỘI DUNG CHUYỂN NGỮ THÔ (RAW STT):
             generationConfig = GenerationConfig(temperature = 0.2f)
         )
 
-        val response = GeminiRetrofitClient.service.generateContent(model, apiKey, request)
+        val service = GeminiRetrofitClient.getService(endpointUrl)
+        val response = service.generateContent(model, apiKey, request)
         return@withContext response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim() 
             ?: throw IOException("Polishing failed. No feedback from Gemini service.")
     }

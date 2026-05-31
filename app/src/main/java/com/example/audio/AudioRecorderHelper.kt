@@ -213,19 +213,27 @@ class AudioRecorderHelper(
         }
     }
 
-    suspend fun stopAndFinalize(): File? {
-        val fileTemp = outputFile
-        if (isRecording) {
-            isRecording = false
-            try {
-                withTimeout(2000) {
-                    recordJob?.join()
-                }
-            } catch (e: TimeoutCancellationException) {
-                Log.w(tag, "recordJob.join() timed out, likely blocked in read()")
-            }
+    sealed class FinalizeResult {
+        data class Success(val file: File) : FinalizeResult()
+        object Timeout : FinalizeResult()
+        object Error : FinalizeResult()
+    }
+
+    suspend fun stopAndFinalize(): FinalizeResult {
+        if (!isRecording && recordJob?.isCompleted == true) {
+            return outputFile?.let { FinalizeResult.Success(it) } ?: FinalizeResult.Error
         }
-        return fileTemp
+        
+        isRecording = false
+        try {
+            withTimeout(2000) {
+                recordJob?.join()
+            }
+        } catch (e: TimeoutCancellationException) {
+            Log.w(tag, "recordJob.join() timed out, likely blocked in read()")
+            return FinalizeResult.Timeout
+        }
+        return outputFile?.let { FinalizeResult.Success(it) } ?: FinalizeResult.Error
     }
 
     fun stopRecording(): File? {

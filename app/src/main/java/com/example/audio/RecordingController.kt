@@ -116,9 +116,9 @@ class RecordingController private constructor(context: Context) {
         }
     }
 
-    suspend fun stopAndFinalize(): File? {
+    suspend fun stopAndFinalize(): AudioRecorderHelper.FinalizeResult {
         val st = _recordingState.value.state
-        if (st == RecordingState.IDLE || st == RecordingState.STOPPING) return null
+        if (st == RecordingState.IDLE || st == RecordingState.STOPPING) return AudioRecorderHelper.FinalizeResult.Error
         
         _recordingState.value = _recordingState.value.copy(state = RecordingState.STOPPING)
         return recorderHelper.stopAndFinalize()

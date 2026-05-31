@@ -20,7 +20,7 @@ class LlmRouter(
                 } else {
                     throw IllegalStateException("CredentialMissing: API Key is required for provider ${provider.id}")
                 }
-                GeminiAdapter(apiKey, mcpRepository)
+                GeminiAdapter(provider.endpointUrl, apiKey, mcpRepository)
             }
             ProviderProtocol.OpenAiChatCompletions,
             ProviderProtocol.OllamaChatCompletions,
