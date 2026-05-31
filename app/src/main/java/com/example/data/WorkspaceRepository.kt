@@ -100,18 +100,17 @@ class WorkspaceRepository(
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
         
-        // Snapshot active settings definitions
-        val activeId = settingsManager.activeProviderId
-        val providers = LlmProvider.fromJsonArrayString(settingsManager.providersJson)
-        val activeProvider = providers.find { it.id == activeId } 
-            ?: LlmProvider.getDefaultProviders().find { it.id == activeId } 
-            ?: LlmProvider.getDefaultProviders().first()
-
-        val endpoint = activeProvider.endpointUrl
-        val model = if (activeProvider.models.isNotEmpty()) activeProvider.models.first() else ""
-        val provider = activeProvider.id
-        val apiKey = activeProvider.apiKey
-        val maxTokens = activeProvider.maxTokens
+        // Snapshot active settings from RuntimeConfig
+        val runtimeConfigRepo = com.example.data.RuntimeConfigRepository(context)
+        val config = try { runtimeConfigRepo.loadConfig() } catch (e: Exception) { null }
+        val activeId = config?.providers?.defaultProviderId ?: "gemini"
+        val pItem = config?.providers?.items?.find { it.id == activeId }
+        
+        val endpoint = pItem?.endpoint ?: ""
+        val model = pItem?.models?.chat ?: ""
+        val provider = pItem?.id ?: activeId
+        val apiKeyAlias = pItem?.apiKeyAlias ?: ""
+        val maxTokens = 4096
 
         val session = SessionEntity(
             id = id, 
@@ -121,7 +120,7 @@ class WorkspaceRepository(
             endpointUrl = endpoint,
             modelName = model,
             apiProvider = provider,
-            apiKey = SecurityHelper.encrypt(apiKey),
+            apiKey = apiKeyAlias, // Save alias, not secret key
             maxTokens = maxTokens
         )
         database.sessionDao().insertSession(session)
@@ -241,8 +240,17 @@ class WorkspaceRepository(
                     lastError = null
                     break
                 } catch (e: Exception) {
+                    val isFatal = e is com.example.data.ConfigIssueException || 
+                                  e.message?.contains("400") == true ||
+                                  e.message?.contains("401") == true ||
+                                  e.message?.contains("403") == true ||
+                                  e.message?.contains("404") == true
                     Log.e(tag, "LLM Route invocation failed on attempt $attempt with provider ${route.provider.id}: ${e.message}")
                     lastError = e
+                    if (isFatal) {
+                        Log.w(tag, "Fatal error encountered, abandoning retry loop. Root cause preserved.")
+                        break
+                    }
                     // Place this provider in 60s cooldown to prevent repeated near-instant failures
                     com.example.data.LlmRouteSelector.reportFailure(route.provider.id)
                 }
@@ -434,22 +442,25 @@ class WorkspaceRepository(
         )
         database.recordingSessionDao().insertRecordingSession(sessionEntity)
 
-        // Populate TranscriptSegmentEntity for raw transcript segment persistence
-        val segment = TranscriptSegmentEntity(
-            id = UUID.randomUUID().toString(),
-            recordingSessionId = id,
-            index = 0,
-            startMs = 0L,
-            endMs = (durationSeconds * 1000).toLong(),
-            text = plainText,
-            isFinal = true,
-            speakerLabel = "Speaker 0",
-            language = "vi",
-            confidence = 1.0f,
-            source = if (isVoiceQuestion) "continuous_speech" else "standalone",
-            createdAt = System.currentTimeMillis()
-        )
-        database.transcriptSegmentDao().insertSegments(listOf(segment))
+        // Populate TranscriptSegmentEntity for raw transcript segment persistence if none exist
+        val existingSegments = database.transcriptSegmentDao().getSegmentsForSessionSync(id)
+        if (existingSegments.isEmpty()) {
+            val segment = TranscriptSegmentEntity(
+                id = UUID.randomUUID().toString(),
+                recordingSessionId = id,
+                index = 0,
+                startMs = 0L,
+                endMs = (durationSeconds * 1000).toLong(),
+                text = plainText,
+                isFinal = true,
+                speakerLabel = "Speaker 0",
+                language = "vi",
+                confidence = 1.0f,
+                source = if (isVoiceQuestion) "continuous_speech" else "standalone",
+                createdAt = System.currentTimeMillis()
+            )
+            database.transcriptSegmentDao().insertSegments(listOf(segment))
+        }
     }
 
     suspend fun deleteRecording(id: String, fileToDelete: File?) = withContext(Dispatchers.IO) {

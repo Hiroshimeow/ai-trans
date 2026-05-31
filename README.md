@@ -2,7 +2,7 @@
 
 Screen Chat Workspace is an Android application designed as an LLM workspace integration for text, media, and basic audio recording. It provides a central hub for managing chats and integrating with external large language models (LLMs).
 
-_Note: This application is currently in a prototype phase. Foreground microphone service exists, but long-running chunking/finalization/recovery is still incomplete. Tool calling is partially implemented via MCP JSON-RPC; audit log/approval policy pending._
+_Note: This application is currently in an engineering prototype phase. Foreground microphone service exists, but comprehensive long-running chunking/recovery is still incomplete. Tool calling is implemented via MCP JSON-RPC with basic audit logging; explicit user approval UI for tools is pending._
 
 ---
 
@@ -12,18 +12,18 @@ This application is actively being refactored towards Clean Architecture princip
 
 ### A. Core Workspace Flow (Prototype)
 * **Context Storage**: Basic Room SQLite persistence layer storing historical sessions, chat history, and prompt templates. Media attachments are handled via URI references. 
-* **Workspace Chat**: Supports basic message exchanges with LLMs and basic file ingestions depending on provider capabilities. Tool-calling is currently **planned** and not yet implemented.
+* **Workspace Chat & Tools**: Supports message exchanges with LLMs and basic file ingestions. Basic MCP (Model Context Protocol) tool-calling is implemented, including an audit log stored in Room.
 * **No Overlay/OCR Services**: This application does not include screenshot parsing, OCR, or active screen-overlay systems.
 
 ### B. Meeting Recorder (Prototype)
-* **Recording System**: Uses standard Android AudioRecord with a foreground service. However, **long-running chunking/finalization/recovery is still incomplete**, meaning process deaths during recording may require manual recovery.
+* **Recording System**: Uses standard Android AudioRecord with a foreground service. Stop behavior handles file finalization and broadcast, but edge-case recovery from process deaths during recording remains a work in progress.
 * **Platform STT Draft**: Integrates the Android `SpeechRecognizer` to stream incremental draft segments. Offline local STT is not guaranteed and depends entirely on the device's capability and network availability.
-* **Data-Flush**: Live draft segments are temporarily written to a `.txt` file cache. Durable Room-based transcript segment storage is planned.
+* **Data-Flush**: Live draft segments are immediately stored in Room tracking `TranscriptSegmentEntity`.
 
 ### C. Multimodal & LLM Integration
-* **Multimodal Polish**: Supports sending recordings and transcripts to the Gemini API for polishing (e.g., structuring stutters and jargon into readable text).
-* **AI Providers**: Supports basic integration with Gemini (GenerateContent protocol) and OpenAI-compatible endpoints (ChatCompletions protocol). The adapter layer is currently being modularized.
-* **Routing Policies (Planned)**: The UI supports configuring Round Robin, Sticky, and Combo routing policies, but comprehensive fault-tolerant LLM switching mechanisms are under active development.
+* **Multimodal Polish**: Supports sending recordings and transcripts to the Gemini API for polishing (e.g., structuring stutters and jargon into readable text). Reads raw source directly from Room segments.
+* **AI Providers & Config-First Routing**: Supports integration with multiple endpoints. LLM routes and providers (including Gemini and OpenAI-compatible models) are driven strictly by a runtime `config.json` rule engine, not legacy defaults.
+* **Capability Mapping**: Distinct models explicitly map to unique capabilities (e.g., chat vs. primary transcript polishing).
 
 ---
 

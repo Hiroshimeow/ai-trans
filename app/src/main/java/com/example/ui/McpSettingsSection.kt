@@ -57,7 +57,7 @@ fun McpSettingsSection(viewModel: MainViewModel) {
                         showMessage = if (result.isSuccess) {
                             "Successfully connected & refreshed tools"
                         } else {
-                            "Connection failed: \${result.exceptionOrNull()?.message}"
+                            "Connection failed: ${result.exceptionOrNull()?.message}"
                         }
                     }
                 }

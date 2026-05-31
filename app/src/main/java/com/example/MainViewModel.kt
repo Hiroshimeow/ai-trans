@@ -114,7 +114,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Configure recorder listeners
         recorderHelper.onAutoStoppedListener = { wavFile ->
             viewModelScope.launch {
-                handleCompletedRecording(wavFile)
+                if (recordingStatus.value != RecordingStatus.SKIPPED) {
+                    handleCompletedRecording(wavFile)
+                }
             }
         }
         recorderHelper.onErrorListener = { errorMsg ->
@@ -370,13 +372,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun stopMeetingRecording() {
         recordingStatus.value = RecordingStatus.STOPPING
         isRecordingAudio.value = false
-        localSpeechHelper?.stopListening()
-        localSpeechHelper = null
         
         val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_STOP
         }
         context.startService(serviceIntent)
+
+        viewModelScope.launch {
+            val file = recorderHelper.stopAndFinalize()
+            localSpeechHelper?.stopListening()
+            localSpeechHelper = null
+            // onAutoStoppedListener takes care of handleCompletedRecording
+        }
     }
 
     fun cancelAudioRecording() {
@@ -385,15 +392,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isMeetingActive.value = false
         isRecordingVoiceQuestion.value = false
         
+        val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+            action = RecordingService.ACTION_STOP
+        }
+        context.startService(serviceIntent)
+        
         viewModelScope.launch {
             val fileRecorded = recorderHelper.stopAndFinalize()
             localSpeechHelper?.stopListening()
             localSpeechHelper = null
-            
-            val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
-                action = RecordingService.ACTION_STOP
-            }
-            context.startService(serviceIntent)
             
             fileRecorded?.let {
                 if (it.exists()) {
@@ -506,14 +513,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun stopAudioRecording() {
         recordingStatus.value = RecordingStatus.STOPPING
         isRecordingAudio.value = false
-        recorderHelper.stopRecording()
-        localSpeechHelper?.stopListening()
-        localSpeechHelper = null
 
         val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_STOP
         }
         context.startService(serviceIntent)
+        
+        viewModelScope.launch {
+            recorderHelper.stopAndFinalize()
+            localSpeechHelper?.stopListening()
+            localSpeechHelper = null
+        }
     }
 
     private fun saveLiveTranscriptSegment(text: String, isFinal: Boolean, index: Int) {
@@ -625,11 +635,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val wavFile = File(recording.audioPath)
-                val rawSTT = if (recording.transcript.isNotBlank()) {
-                    val parsed = TranscriptData.fromJson(recording.transcript)
-                    parsed.segments.joinToString("\n") { it.text }
-                } else {
-                    ""
+                val segmentsFromDb = database.transcriptSegmentDao().getSegmentsForSessionSync(recording.id)
+                val rawSTTFromSegments = segmentsFromDb.sortedBy { it.index }.joinToString("\n") { it.text }
+                
+                val rawSTT = if (rawSTTFromSegments.isNotBlank()) rawSTTFromSegments else {
+                    if (recording.transcript.isNotBlank()) {
+                         val parsed = TranscriptData.fromJson(recording.transcript)
+                         parsed.segments.joinToString("\n") { it.text }
+                    } else ""
                 }
 
                 Log.d(tag, "Polishing transcript for recording: ${recording.id}, file: ${wavFile.name}")

@@ -128,15 +128,6 @@ object LlmRouteSelector {
             routingLog = "Config-First Route Selected: ${targetProvider.name} | Capability: $capability | Model: $selModel"
         )
     }
-
-    private fun fallbackToAnyActiveProvider(providers: List<LlmProvider>, currentActiveId: String): LlmProvider {
-        // Find if activeId is cooling down or missing, fallback to any provider not in cooldown
-        val nonCooling = providers.filter { !isProviderInCooldown(it.id) }
-        if (nonCooling.isNotEmpty()) {
-            return nonCooling.first()
-        }
-        return providers.first()
-    }
 }
 
 data class ResolvedRoute(

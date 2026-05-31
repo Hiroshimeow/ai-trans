@@ -18,20 +18,24 @@ class McpRepository(
     fun getToolsForServerFlow(serverId: String): Flow<List<McpToolEntity>> = mcpDao.getToolsForServerFlow(serverId)
 
     private fun getConfigServers(): List<McpServerEntity> {
-        val config = runtimeConfigRepo.loadConfig()
-        return config?.mcp?.servers?.filter { it.enabled }?.map {
-            McpServerEntity(
-                id = it.id.ifEmpty { UUID.nameUUIDFromBytes(it.endpoint.toByteArray()).toString() },
-                name = it.name.ifEmpty { "Configured Server" },
-                endpointUrl = it.endpoint,
-                tokenAlias = it.tokenAlias,
-                enabled = it.enabled,
-                createdAt = 0L,
-                updatedAt = 0L,
-                lastConnectedAt = null,
-                lastError = null
-            )
-        } ?: emptyList()
+        return try {
+            val config = runtimeConfigRepo.loadConfig()
+            config.mcp.servers.filter { it.enabled }.map {
+                McpServerEntity(
+                    id = it.id.ifEmpty { java.util.UUID.nameUUIDFromBytes(it.endpoint.toByteArray()).toString() },
+                    name = it.name.ifEmpty { "Configured Server" },
+                    endpointUrl = it.endpoint,
+                    tokenAlias = it.tokenAlias,
+                    enabled = it.enabled,
+                    createdAt = 0L,
+                    updatedAt = 0L,
+                    lastConnectedAt = null,
+                    lastError = null
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     suspend fun getEnabledServersSync(): List<McpServerEntity> {
@@ -129,7 +133,7 @@ class McpRepository(
             val result = mcpClient.callTool(config, toolName, argsJson)
             toolCallDao.updateToolCall(toolCall.copy(
                 status = "executed",
-                resultSummary = "Success: \${result.content.take(100)}...",
+                resultSummary = "Success: ${result.content.take(100)}...",
                 executedAt = System.currentTimeMillis()
             ))
             result
@@ -163,11 +167,10 @@ class McpRepository(
             )
 
             // Save tools with validation
-            val seenNames = mutableSetOf<String>()
+            val nameCounts = tools.groupingBy { it.name }.eachCount()
             val toolEntities = tools.map { t ->
-                val isValidName = t.name.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_-]*$"))
-                val isDuplicate = seenNames.contains(t.name)
-                seenNames.add(t.name)
+                val isValidName = t.name.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_-]*\$"))
+                val isDuplicate = nameCounts[t.name] ?: 0 > 1
                 
                 val statusMsg = when {
                     !isValidName -> "Invalid name. Use alias."
