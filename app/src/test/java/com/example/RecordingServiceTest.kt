@@ -27,7 +27,12 @@ class RecordingServiceTest {
     @Before
     fun setup() {
         // AppDatabase will use in-memory context normally in robolectric or fake
-        appDatabase = AppDatabase.getDatabase(ApplicationProvider.getApplicationContext())
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        appDatabase = AppDatabase.getDatabase(context)
+        
+        val dir = java.io.File(context.getExternalFilesDir("config"), "")
+        dir.mkdirs()
+        java.io.File(dir, "config.json").writeText("{}")
     }
 
     @Test
@@ -79,7 +84,7 @@ class RecordingServiceTest {
 
         // 3. Verify DB update
         // Because scope.launch is used inside the service action, we may need a small delay or to yield
-        kotlinx.coroutines.delay(100) 
+        kotlinx.coroutines.delay(1000) // increase delay for IO coroutines in Robolectric
         
         val updatedSession = appDatabase.recordingSessionDao().getRecordingSessionById(sessionId)
         assertNotNull(updatedSession)

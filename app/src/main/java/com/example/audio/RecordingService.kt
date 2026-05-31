@@ -44,14 +44,19 @@ class RecordingService : Service() {
                 
                 val runtimeRepo = com.example.data.RuntimeConfigRepository(this)
                 val config = try { runtimeRepo.loadConfig() } catch (e: Exception) { null }
-                val sampleRate = config?.recording?.meeting?.sampleRate ?: 16000
+                val controller = RecordingController.getInstance(this)
+                if (config == null || config.recording.meeting.sampleRate <= 0) {
+                     controller.failRecording("ConfigError: Missing valid recording sampleRate configuration.")
+                     stopSelf()
+                     return START_NOT_STICKY
+                }
+                val sampleRate = config.recording.meeting.sampleRate
                 val sessionId = intent.getStringExtra("EXTRA_SESSION_ID") ?: ""
                 val isMeeting = intent.getBooleanExtra("EXTRA_IS_MEETING", true)
                 val autoStop = intent.getBooleanExtra("EXTRA_AUTO_STOP", false)
                 val threshold = intent.getFloatExtra("EXTRA_THRESHOLD", 0.012f)
                 val maxSecs = intent.getIntExtra("EXTRA_MAX_SECS", 3)
 
-                val controller = RecordingController.getInstance(this)
                 if (controller.recordingState.value.state == RecordingState.IDLE) {
                     if (isMeeting) {
                         controller.startMeeting(sessionId, sampleRate)

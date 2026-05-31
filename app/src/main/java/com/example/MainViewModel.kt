@@ -48,6 +48,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val allSkills: StateFlow<List<PromptSkillEntity>> = repository.allSkills
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val pendingToolCalls: StateFlow<List<ToolCallEntity>> = database.toolCallDao().getPendingToolCallsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun approveToolCall(callId: String) {
+        viewModelScope.launch {
+            val call = database.toolCallDao().getToolCallById(callId)
+            if (call != null && call.status == "pending_approval") {
+                database.toolCallDao().updateToolCall(call.copy(status = "executing"))
+            }
+        }
+    }
+
+    fun rejectToolCall(callId: String) {
+        viewModelScope.launch {
+            val call = database.toolCallDao().getToolCallById(callId)
+            if (call != null && call.status == "pending_approval") {
+                database.toolCallDao().updateToolCall(call.copy(
+                    status = "rejected",
+                    resultSummary = "Rejected by user.",
+                    errorCode = "ToolApprovalRequired"
+                ))
+            }
+        }
+    }
+
     val allRecordings: StateFlow<List<RecordingEntity>> = repository.allRecordings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -104,8 +129,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (sessions.isNotEmpty()) {
                         _activeSessionId.value = sessions.first().id
                     } else {
-                        val firstId = repository.createNewSession("Daily Workspace Session")
-                        _activeSessionId.value = firstId
+                        try {
+                            val firstId = repository.createNewSession("Daily Workspace Session")
+                            _activeSessionId.value = firstId
+                        } catch (e: Exception) {
+                            errorString.value = e.message ?: "Failed to create default session"
+                        }
                     }
                 }
             }
@@ -162,8 +191,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             val trimmedTitle = title.trim().ifEmpty { "New Workspace Session" }
-            val newId = repository.createNewSession(trimmedTitle)
-            _activeSessionId.value = newId
+            try {
+                val newId = repository.createNewSession(trimmedTitle)
+                _activeSessionId.value = newId
+            } catch (e: Exception) {
+                errorString.value = e.message ?: "Failed to create session"
+            }
         }
     }
 

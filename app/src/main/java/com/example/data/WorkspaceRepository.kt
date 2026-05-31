@@ -97,25 +97,25 @@ class WorkspaceRepository(
 
     // --- Session Actions ---
     suspend fun createNewSession(title: String): String = withContext(Dispatchers.IO) {
-        val id = UUID.randomUUID().toString()
-        val now = System.currentTimeMillis()
-        
-        // Snapshot active settings from RuntimeConfig
         val runtimeConfigRepo = com.example.data.RuntimeConfigRepository(context)
-        var configError: String? = null
         val config = try { 
             runtimeConfigRepo.loadConfig() 
         } catch (e: Exception) { 
-            configError = "ConfigError: ${e.message}"
-            null 
+            throw Exception("ConfigError: Unable to create session. Runtime config is invalid or missing. ${e.message}")
         }
-        val activeId = config?.providers?.defaultProviderId
-        val pItem = config?.providers?.items?.find { it.id == activeId }
+        val activeId = config.providers.defaultProviderId
+        val pItem = config.providers.items.find { it.id == activeId }
         
-        val endpoint = pItem?.endpoint ?: ""
-        val model = pItem?.models?.chat ?: ""
-        val provider = pItem?.id ?: activeId ?: (if (configError != null) "unconfigured" else "unknown")
-        val apiKeyAlias = pItem?.apiKeyAlias ?: configError ?: ""
+        if (pItem == null) {
+            throw Exception("ConfigError: Default provider '$activeId' not found in config.")
+        }
+        
+        val id = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        val endpoint = pItem.endpoint
+        val model = pItem.models.chat
+        val provider = pItem.id
+        val apiKeyAlias = pItem.apiKeyAlias
         val maxTokens = 4096
 
         val session = SessionEntity(
@@ -410,6 +410,12 @@ class WorkspaceRepository(
     }
 
     suspend fun saveCompletedRecording(sessionId: String, audioFile: File, durationSeconds: Double, transcriptJson: String, isMeeting: Boolean = false, isVoiceQuestion: Boolean = false) = withContext(Dispatchers.IO) {
+        val runtimeConfigRepo = com.example.data.RuntimeConfigRepository(context)
+        val config = try { runtimeConfigRepo.loadConfig() } catch (e: Exception) { null }
+        val pItem = config?.providers?.items?.find { it.id == config.providers.defaultProviderId }
+        val actualProviderId = pItem?.id ?: "unknown"
+        val actualLanguage = "vi" // Storing vi as default since there is no language list in config
+
         val id = sessionId
         val recording = RecordingEntity(
             id = id,
@@ -444,7 +450,9 @@ class WorkspaceRepository(
             durationMs = (durationSeconds * 1000).toLong(),
             status = "completed",
             stopReason = "manual",
-            finalTranscript = plainText
+            finalTranscript = plainText,
+            providerId = actualProviderId,
+            language = actualLanguage
         ) ?: RecordingSessionEntity(
             id = id,
             workspaceSessionId = null,
@@ -456,8 +464,8 @@ class WorkspaceRepository(
             durationMs = (durationSeconds * 1000).toLong(),
             status = "completed",
             stopReason = "manual",
-            providerId = "unknown",
-            language = "vi",
+            providerId = actualProviderId,
+            language = actualLanguage,
             finalTranscript = plainText,
             summary = null,
             actionItemsJson = null,

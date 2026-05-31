@@ -143,12 +143,18 @@ class McpRepository(
         toolCallDao.insertToolCall(toolCall)
 
         if (isDestructive) {
-            toolCallDao.updateToolCall(toolCall.copy(
-                status = "rejected",
-                errorCode = "ToolApprovalRequired",
-                resultSummary = "Destructive tool execution blocked. User approval UI flow is pending implementation."
-            ))
-            throw Exception("ToolApprovalRequired: Destructive tools require user approval which is not yet available.")
+            var current = toolCallDao.getToolCallById(callId)
+            while (current != null && current.status == "pending_approval") {
+                kotlinx.coroutines.delay(1000)
+                current = toolCallDao.getToolCallById(callId)
+            }
+            if (current == null) {
+                throw Exception("Tool call was removed.")
+            }
+            if (current.status == "rejected") {
+                throw Exception("ToolApprovalRequired: Destructive tool execution rejected by user.")
+            }
+            // If approved, status is "executing" or similar, we proceed to call
         }
 
         return try {

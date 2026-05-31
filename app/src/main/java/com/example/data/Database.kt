@@ -328,6 +328,12 @@ interface ToolCallDao {
     @Query("SELECT * FROM tool_calls WHERE sessionId = :sessionId ORDER BY createdAt ASC")
     fun getToolCallsForSessionFlow(sessionId: String): Flow<List<ToolCallEntity>>
 
+    @Query("SELECT * FROM tool_calls WHERE status = 'pending_approval' ORDER BY createdAt ASC")
+    fun getPendingToolCallsFlow(): Flow<List<ToolCallEntity>>
+
+    @Query("SELECT * FROM tool_calls WHERE id = :id LIMIT 1")
+    suspend fun getToolCallById(id: String): ToolCallEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertToolCall(call: ToolCallEntity)
 

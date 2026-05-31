@@ -123,6 +123,15 @@ class RecordingController private constructor(context: Context) {
         _recordingState.value = RecordingStatus(state = RecordingState.IDLE)
     }
 
+    fun failRecording(errorMessage: String) {
+        scope.launch { _events.emit(RecordingEvent.Error(errorMessage)) }
+        val file = recorderHelper.stopRecording()
+        if (file != null && file.exists()) {
+            file.delete()
+        }
+        _recordingState.value = RecordingStatus(state = RecordingState.IDLE)
+    }
+
     companion object {
         @Volatile
         private var instance: RecordingController? = null

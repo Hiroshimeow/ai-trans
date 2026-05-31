@@ -75,6 +75,7 @@ fun ChatPanel(
     val activeId by viewModel.activeSessionId.collectAsStateWithLifecycle()
     val activeSession = sessions.find { it.id == activeId }
     var showSessionConfig by remember { mutableStateOf(false) }
+    val pendingToolCalls by viewModel.pendingToolCalls.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
 
@@ -334,6 +335,54 @@ fun ChatPanel(
                                 val decryptedKey = session.getDecryptedApiKey()
                                 val keyDisplay = if (decryptedKey.isNullOrBlank()) "None (Uses Default)" else "Keys Saved: sk-***" + decryptedKey.takeLast(4)
                                 Text("API Key: $keyDisplay", fontSize = 10.sp, color = SlateTextSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (pendingToolCalls.isNotEmpty()) {
+            val pendingForSession = pendingToolCalls.filter { it.sessionId == activeId }
+            if (pendingForSession.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = CoralRed.copy(alpha = 0.1f)),
+                    border = BorderStroke(1.dp, CoralRed)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("Pending Tool Approvals", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = CoralRed)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        pendingForSession.forEach { call ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Tool: ${call.toolName}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("Args: ${call.argumentsJson}", fontSize = 10.sp, color = SlateTextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Button(
+                                        onClick = { viewModel.approveToolCall(call.id) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ActiveGreen),
+                                        contentPadding = PaddingValues(horizontal = 8.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Text("Approve", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                    Button(
+                                        onClick = { viewModel.rejectToolCall(call.id) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = CoralRed),
+                                        contentPadding = PaddingValues(horizontal = 8.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Text("Reject", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
                             }
                         }
                     }
