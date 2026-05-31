@@ -468,7 +468,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                         
                         DropdownMenuItem(
                             text = { Text("OpenAI-compatible") },
-                            onClick = { addTemplate("OpenAI Compatible", "https://api.openai.com/v1", listOf("gpt-4o", "gpt-4o-mini"), com.example.data.ProviderProtocol.OpenAiChatCompletions) }
+                            onClick = { addTemplate("OpenAI-compatible custom", "", listOf("placeholder-model"), com.example.data.ProviderProtocol.OpenAiChatCompletions) }
                         )
                         DropdownMenuItem(
                             text = { Text("OpenRouter") },

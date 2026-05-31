@@ -146,10 +146,10 @@ class GeminiAdapter(
                         val result = mcpRepository.executeTool(mcpMeta.serverId, mcpMeta.name, argsJsonStr)
                         mapOf("result" to result.content)
                     } catch (e: Exception) {
-                        mapOf("error" to "Failed to execute tool: \${e.message}")
+                        mapOf("error" to "Failed to execute tool: ${e.message}")
                     }
                 } else {
-                    mapOf("error" to "Tool \$toolName not configured")
+                    mapOf("error" to "Tool $toolName not configured")
                 }
                 
                 userResponseParts.add(Part(functionResponse = FunctionResponse(name = toolName, response = resultData)))

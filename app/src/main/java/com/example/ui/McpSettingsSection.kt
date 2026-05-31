@@ -43,6 +43,7 @@ fun McpSettingsSection(viewModel: MainViewModel) {
 
         servers.forEach { server ->
             McpServerRow(
+                viewModel = viewModel,
                 server = server,
                 onRemove = {
                     coroutineScope.launch {
@@ -110,10 +111,13 @@ fun McpSettingsSection(viewModel: MainViewModel) {
 
 @Composable
 fun McpServerRow(
+    viewModel: MainViewModel,
     server: McpServerEntity,
     onRemove: () -> Unit,
     onRefresh: () -> Unit
 ) {
+    val tools by viewModel.mcpRepository.getToolsForServerFlow(server.id).collectAsStateWithLifecycle(initialValue = emptyList())
+    
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -127,7 +131,34 @@ fun McpServerRow(
         if (server.lastError != null) {
             Text("Error: \${server.lastError}", color = Color.Red, fontSize = 10.sp)
         } else if (server.lastConnectedAt != null) {
-            Text("Active & Connected", color = Color.Green, fontSize = 10.sp)
+            Text("Active & Connected: \${tools.size} tools", color = Color.Green, fontSize = 10.sp)
+        }
+
+        if (tools.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                    .padding(8.dp)
+            ) {
+                Text("Available Tools:", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                tools.forEach { tool ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(tool.name, color = if (tool.enabled) Color.White else SlateTextSecondary, fontSize = 11.sp, textDecoration = if (tool.enabled) null else androidx.compose.ui.text.style.TextDecoration.LineThrough)
+                            if (tool.errorMessage != null) {
+                                Text(tool.errorMessage, color = Color.Red, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))

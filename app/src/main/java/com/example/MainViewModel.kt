@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.UUID
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val tag = "MainViewModel"
@@ -85,6 +86,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isMeetingActive = MutableStateFlow(false)
     val isRecordingVoiceQuestion = MutableStateFlow(false)
     private var activeRecordingFile: File? = null
+    private var activeRecordingSessionId: String? = null
     val isPolishingTranscript = MutableStateFlow(false)
 
     // Audio Playback State
@@ -258,6 +260,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // --- Voice Recording Logic ---
 
     fun toggleAudioRecording() {
+        if (!isRecordingAudio.value && isMeetingActive.value) {
+            errorString.value = "Cannot record voice message while meeting is active."
+            return
+        }
         if (isRecordingAudio.value) {
             stopAudioRecording()
         } else {
@@ -266,6 +272,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleVoiceQuestionRecording() {
+        if (!isRecordingAudio.value && isMeetingActive.value) {
+            errorString.value = "Cannot ask voice question while meeting is active."
+            return
+        }
         if (isRecordingAudio.value) {
             stopAudioRecording()
         } else {
@@ -275,11 +285,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startMeetingRecording() {
+        if (isRecordingAudio.value) {
+            errorString.value = "Please stop current recording before starting a meeting."
+            return
+        }
         isMeetingActive.value = true
         liveMeetingTranscript.value = ""
         playerHelper.stopAudio()
         activeAudioPlaybackPath.value = null
         recordAutoStoppedDueToSilence.value = false
+        activeRecordingSessionId = UUID.randomUUID().toString()
         
         val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
@@ -301,6 +316,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     liveSpeechResult.value = result
                     liveMeetingTranscript.value = result
                     Log.d(tag, "Local continuous transcript update: $result")
+                    saveLiveTranscriptSegment(result)
                 },
                 onError = { err ->
                     Log.e(tag, "Local SpeechRecognizer error: $err")
@@ -344,26 +360,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelAudioRecording() {
         recordingStatus.value = RecordingStatus.SKIPPED
         isRecordingAudio.value = false
-        val fileRecorded = activeRecordingFile
-        recorderHelper.stopRecording()
-        localSpeechHelper?.stopListening()
-        localSpeechHelper = null
         isMeetingActive.value = false
         isRecordingVoiceQuestion.value = false
-        activeRecordingFile = null
         
-        val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
-            action = RecordingService.ACTION_STOP
-        }
-        context.startService(serviceIntent)
-        
-        fileRecorded?.let {
-            if (it.exists()) {
-                it.delete()
+        viewModelScope.launch {
+            val fileRecorded = recorderHelper.stopAndFinalize()
+            localSpeechHelper?.stopListening()
+            localSpeechHelper = null
+            
+            val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
+                action = RecordingService.ACTION_STOP
             }
-            val txtFile = File(it.parentFile, it.nameWithoutExtension + ".txt")
-            if (txtFile.exists()) {
-                txtFile.delete()
+            context.startService(serviceIntent)
+            
+            fileRecorded?.let {
+                if (it.exists()) {
+                    it.delete()
+                }
             }
         }
     }
@@ -387,6 +400,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         recordAutoStoppedDueToSilence.value = false
+        activeRecordingSessionId = UUID.randomUUID().toString()
         val fileRecorded = recorderHelper.startRecording()
         if (fileRecorded != null) {
             val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
@@ -412,7 +426,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             liveMeetingTranscript.value = result
                         }
                         Log.d(tag, "Local continuous transcript update: $result")
-                        saveLiveTranscriptToDisk(result)
+                        saveLiveTranscriptSegment(result)
                     },
                     onError = { err ->
                         Log.e(tag, "Local SpeechRecognizer error: $err")
@@ -455,15 +469,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         context.startService(serviceIntent)
     }
 
-    private fun saveLiveTranscriptToDisk(text: String) {
-        val file = activeRecordingFile ?: return
-        viewModelScope.launch(Dispatchers.IO) {
+    private fun saveLiveTranscriptSegment(text: String) {
+        val sessionId = activeRecordingSessionId ?: return
+        viewModelScope.launch {
             try {
-                // val txtFile = File(file.parentFile, file.nameWithoutExtension + ".txt")
-                // txtFile.writeText(text)
-                Log.d(tag, "Safely flushed live transcript to database instead of disk")
+                repository.saveLiveTranscriptSegment(sessionId, text)
+                Log.d(tag, "Safely flushed live transcript to database for session $sessionId")
             } catch (e: Exception) {
-                Log.e(tag, "Failed to write live transcript to disk", e)
+                Log.e(tag, "Failed to write live transcript to database", e)
             }
         }
     }
@@ -504,7 +517,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val dbPayloadValue = transcriptData.toJson()
 
-            repository.saveCompletedRecording(wavFile, durationSecs, dbPayloadValue, isMeeting = isMeeting, isVoiceQuestion = isVoiceQ)
+            val sessionId = activeRecordingSessionId ?: UUID.randomUUID().toString()
+            repository.saveCompletedRecording(sessionId, wavFile, durationSecs, dbPayloadValue, isMeeting = isMeeting, isVoiceQuestion = isVoiceQ)
 
             if (transcript.isNotBlank()) {
                 if (isVoiceQ) {

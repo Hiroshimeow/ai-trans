@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.example.BuildConfig
 import java.util.concurrent.ConcurrentHashMap
+import java.util.Locale
+
+class ConfigIssueException(message: String) : Exception(message)
 
 object LlmRouteSelector {
     private const val TAG = "LlmRouteSelector"
@@ -76,12 +79,15 @@ object LlmRouteSelector {
     ): ResolvedRoute {
         val runtimeConfig = runtimeConfigRepo?.loadConfig()
         val configProviders = runtimeConfig?.providers?.items?.filter { it.enabled }?.map { pItem ->
-            val resolvedKey = credentialStore?.getSecret(pItem.apiKeyAlias) ?: pItem.apiKeyAlias
+            val resolvedKey = credentialStore?.getSecret(pItem.apiKeyAlias)
+            if (resolvedKey.isNullOrBlank() && pItem.apiKeyAlias.isNotBlank()) {
+                throw ConfigIssueException("CredentialMissing: Secret not found for alias ${pItem.apiKeyAlias}")
+            }
             LlmProvider(
                 id = pItem.id,
-                name = pItem.type.capitalize(),
+                name = pItem.type.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
                 endpointUrl = pItem.endpoint,
-                apiKey = resolvedKey,
+                apiKey = resolvedKey ?: pItem.apiKeyAlias,
                 models = listOfNotNull(pItem.models.chat.takeIf { it.isNotEmpty() }),
                 maxTokens = 4096,
                 protocol = if (pItem.type == "gemini") ProviderProtocol.GeminiGenerateContent else ProviderProtocol.OpenAiChatCompletions
@@ -122,13 +128,7 @@ object LlmRouteSelector {
         }
 
         if (validatedProviders.isEmpty()) {
-            // Fallback to absolute default if no configured keys are loaded yet
-            val defaultGeminiObj = defaultProviders.first { it.id == "gemini" }
-            return ResolvedRoute(
-                provider = defaultGeminiObj,
-                selectedModel = if (defaultGeminiObj.models.isNotEmpty()) defaultGeminiObj.models.first() else "",
-                routingLog = "No active API keys found. Defaulting to native Gemini provider."
-            )
+            throw ConfigIssueException("CredentialMissing: No active API keys found.")
         }
 
         val now = System.currentTimeMillis()
@@ -145,8 +145,7 @@ object LlmRouteSelector {
             }
 
             if (comboList.isEmpty()) {
-                val defaultGeminiObj = defaultProviders.first { it.id == "gemini" }
-                return ResolvedRoute(defaultGeminiObj, "", "Combo list empty")
+                throw ConfigIssueException("MissingModelConfig: No model configured for provider.")
             }
 
             // Filter out combos whose provider is currently in cooldown
@@ -230,6 +229,9 @@ object LlmRouteSelector {
             ?: fallbackToAnyActiveProvider(validatedProviders, activeId)
 
         val selModel = if (targetProvider.models.isNotEmpty()) targetProvider.models.first() else ""
+        if (selModel.isEmpty()) {
+            throw ConfigIssueException("MissingModelConfig: No model configured for provider ${targetProvider.id}")
+        }
         
         return ResolvedRoute(
             provider = targetProvider,

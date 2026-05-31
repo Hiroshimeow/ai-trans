@@ -55,6 +55,11 @@ android {
     compose = true
     buildConfig = true
   }
+  
+  ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+  }
+
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 

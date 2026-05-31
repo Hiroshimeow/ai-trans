@@ -51,6 +51,7 @@ class AudioRecorderHelper(
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
     private var outputFile: File? = null
+    val currentFile: File? get() = outputFile
 
     // Callback
     var onAutoStoppedListener: ((File) -> Unit)? = null
@@ -207,6 +208,16 @@ class AudioRecorderHelper(
                 }
             }
         }
+    }
+
+    suspend fun stopAndFinalize(): File? {
+        if (!isRecording) {
+            return null
+        }
+        val fileTemp = outputFile
+        isRecording = false
+        recordJob?.join()
+        return fileTemp
     }
 
     fun stopRecording(): File? {

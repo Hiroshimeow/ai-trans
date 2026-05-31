@@ -14,6 +14,7 @@ class McpRepository(
     private val runtimeConfigRepo: com.example.data.RuntimeConfigRepository
 ) {
     fun getAllServersFlow(): Flow<List<McpServerEntity>> = mcpDao.getAllServersFlow()
+    fun getToolsForServerFlow(serverId: String): Flow<List<McpToolEntity>> = mcpDao.getToolsForServerFlow(serverId)
 
     private fun getConfigServers(): List<McpServerEntity> {
         val config = runtimeConfigRepo.loadConfig()
@@ -112,16 +113,29 @@ class McpRepository(
                 )
             )
 
-            // Save tools
+            // Save tools with validation
+            val seenNames = mutableSetOf<String>()
             val toolEntities = tools.map { t ->
+                val isValidName = t.name.matches(Regex("^[a-zA-Z_][a-zA-Z0-9_-]*$"))
+                val isDuplicate = seenNames.contains(t.name)
+                seenNames.add(t.name)
+                
+                val statusMsg = when {
+                    !isValidName -> "Invalid name. Use alias."
+                    isDuplicate -> "Duplicate name."
+                    else -> "Valid"
+                }
+
                 McpToolEntity(
                     id = "${server.id}_${t.name}",
                     serverId = server.id,
-                    name = t.name,
+                    name = t.name, // Keep original name, UI will show it as disabled
                     description = t.description,
                     inputSchemaJson = t.inputSchema,
-                    enabled = true,
-                    updatedAt = System.currentTimeMillis()
+                    enabled = isValidName && !isDuplicate,
+                    updatedAt = System.currentTimeMillis(),
+                    status = if (isValidName && !isDuplicate) "active" else "disabled",
+                    errorMessage = if (isValidName && !isDuplicate) null else statusMsg
                 )
             }
             mcpDao.insertTools(toolEntities)

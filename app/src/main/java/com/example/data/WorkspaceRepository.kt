@@ -345,8 +345,26 @@ class WorkspaceRepository(
     }
 
     // --- Recordings Management ---
-    suspend fun saveCompletedRecording(audioFile: File, durationSeconds: Double, transcriptJson: String, isMeeting: Boolean = false, isVoiceQuestion: Boolean = false) = withContext(Dispatchers.IO) {
-        val id = UUID.randomUUID().toString()
+    suspend fun saveLiveTranscriptSegment(sessionId: String, text: String) = withContext(Dispatchers.IO) {
+        val segment = TranscriptSegmentEntity(
+            id = "${sessionId}_live",
+            recordingSessionId = sessionId,
+            index = 0,
+            startMs = 0L,
+            endMs = null,
+            text = text,
+            isFinal = false,
+            speakerLabel = null,
+            language = null,
+            confidence = null,
+            source = "local_live",
+            createdAt = System.currentTimeMillis()
+        )
+        database.transcriptSegmentDao().insertSegments(listOf(segment))
+    }
+
+    suspend fun saveCompletedRecording(sessionId: String, audioFile: File, durationSeconds: Double, transcriptJson: String, isMeeting: Boolean = false, isVoiceQuestion: Boolean = false) = withContext(Dispatchers.IO) {
+        val id = sessionId
         val recording = RecordingEntity(
             id = id,
             audioPath = audioFile.absolutePath,

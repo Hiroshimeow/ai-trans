@@ -299,7 +299,9 @@ data class McpToolEntity(
     val description: String,
     val inputSchemaJson: String,
     val enabled: Boolean,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val status: String? = null,
+    val errorMessage: String? = null
 )
 
 @Dao
@@ -318,6 +320,9 @@ interface McpDao {
 
     @Query("DELETE FROM mcp_servers WHERE id = :id")
     suspend fun deleteServerById(id: String)
+
+    @Query("SELECT * FROM mcp_tools WHERE serverId = :serverId")
+    fun getToolsForServerFlow(serverId: String): Flow<List<McpToolEntity>>
 
     @Query("SELECT * FROM mcp_tools WHERE serverId = :serverId")
     suspend fun getToolsForServerSync(serverId: String): List<McpToolEntity>
@@ -345,8 +350,8 @@ interface McpDao {
         McpServerEntity::class,
         McpToolEntity::class
     ],
-    version = 6,
-    exportSchema = false
+    version = 7,
+    exportSchema = true
 )
 @TypeConverters(DatabaseConverters::class)
 abstract class AppDatabase : RoomDatabase() {
