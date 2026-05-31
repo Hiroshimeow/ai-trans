@@ -80,13 +80,21 @@ class RecordingServiceTest {
         val stopIntent = Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_STOP
         }
-        serviceController.startCommand(0, 2)
+        serviceController.withIntent(stopIntent).startCommand(0, 2)
 
         // 3. Verify DB update
-        // Because scope.launch is used inside the service action, we may need a small delay or to yield
-        kotlinx.coroutines.delay(1000) // increase delay for IO coroutines in Robolectric
+        // Poll for completion because of IO dispatchers in the background
+        var updatedSession: com.example.data.RecordingSessionEntity? = null
+        kotlinx.coroutines.withTimeout(5000) {
+            while(true) {
+                updatedSession = appDatabase.recordingSessionDao().getRecordingSessionById(sessionId)
+                if (updatedSession?.status == "completed") {
+                    break
+                }
+                kotlinx.coroutines.delay(100)
+            }
+        }
         
-        val updatedSession = appDatabase.recordingSessionDao().getRecordingSessionById(sessionId)
         assertNotNull(updatedSession)
         assertEquals("completed", updatedSession?.status)
         assertEquals("manual", updatedSession?.stopReason)

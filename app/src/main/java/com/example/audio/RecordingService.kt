@@ -24,6 +24,7 @@ class RecordingService : Service() {
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_RECORDING_STARTED = "com.example.audio.RECORDING_STARTED"
+        const val ACTION_RECORDING_COMPLETED = "com.example.audio.RECORDING_COMPLETED"
         const val EXTRA_FILE_PATH = "EXTRA_FILE_PATH"
         private const val NOTIFICATION_ID = 101
         private const val CHANNEL_ID = "recording_channel"
@@ -34,6 +35,65 @@ class RecordingService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        
+        serviceScope.launch {
+            RecordingController.getInstance(this@RecordingService).events.collect { event ->
+                when (event) {
+                    is RecordingEvent.AutoStopped -> {
+                        val file = event.file
+                        val sessionId = event.sessionId
+                        if (file != null && sessionId != null) {
+                            val durationSecs = file.length() / (16000.0 * 2.0)
+                            val db = com.example.data.AppDatabase.getDatabase(this@RecordingService)
+                            val sessionEntity = db.recordingSessionDao().getRecordingSessionById(sessionId)
+                            if (sessionEntity != null) {
+                                val transcriptText = db.transcriptSegmentDao()
+                                    .getSegmentsForSessionSync(sessionId)
+                                    .filter { it.isFinal }
+                                    .sortedBy { it.index }
+                                    .joinToString("\n") { it.text }
+                                
+                                db.recordingSessionDao().updateRecordingSession(
+                                    sessionEntity.copy(
+                                        status = "completed",
+                                        stopReason = "auto_silence",
+                                        endedAt = System.currentTimeMillis(),
+                                        durationMs = (durationSecs * 1000).toLong(),
+                                        audioPath = file.absolutePath,
+                                        finalTranscript = transcriptText.ifBlank { sessionEntity.finalTranscript }
+                                    )
+                                )
+                                val recording = com.example.data.RecordingEntity(
+                                    id = sessionId,
+                                    audioPath = file.absolutePath,
+                                    durationSeconds = durationSecs,
+                                    transcript = transcriptText.ifBlank { "" },
+                                    createdAt = System.currentTimeMillis(),
+                                    error = null
+                                )
+                                db.recordingDao().insertRecording(recording)
+                                
+                                val broadcastIntent = Intent(ACTION_RECORDING_COMPLETED)
+                                broadcastIntent.putExtra("EXTRA_FILE_PATH", file.absolutePath)
+                                broadcastIntent.putExtra("EXTRA_SESSION_ID", sessionId)
+                                sendBroadcast(broadcastIntent)
+                            }
+                        }
+                        stopForeground(true)
+                        stopSelf()
+                    }
+                    is RecordingEvent.Error -> {
+                        val broadcastIntent = Intent(ACTION_RECORDING_COMPLETED).apply {
+                            putExtra("ERROR_MESSAGE", event.message)
+                        }
+                        sendBroadcast(broadcastIntent)
+                        stopForeground(true)
+                        stopSelf()
+                    }
+                    else -> {}
+                }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

@@ -211,12 +211,17 @@ class AudioRecorderHelper(
     }
 
     suspend fun stopAndFinalize(): File? {
-        if (!isRecording) {
-            return null
-        }
         val fileTemp = outputFile
-        isRecording = false
-        recordJob?.join()
+        if (isRecording) {
+            isRecording = false
+            try {
+                withTimeout(2000) {
+                    recordJob?.join()
+                }
+            } catch (e: TimeoutCancellationException) {
+                Log.w(tag, "recordJob.join() timed out, likely blocked in read()")
+            }
+        }
         return fileTemp
     }
 

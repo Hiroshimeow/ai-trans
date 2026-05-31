@@ -12,8 +12,8 @@ import java.io.File
 
 // File level or companion object 
 sealed interface RecordingEvent {
-    data class AutoStopped(val file: File) : RecordingEvent
-    data class Error(val message: String) : RecordingEvent
+    data class AutoStopped(val file: File, val sessionId: String?) : RecordingEvent
+    data class Error(val message: String, val sessionId: String?) : RecordingEvent
     object SilenceStopped : RecordingEvent
 }
 
@@ -31,18 +31,27 @@ class RecordingController private constructor(context: Context) {
 
     init {
         recorderHelper.onAutoStoppedListener = { file ->
-            _recordingState.value = _recordingState.value.copy(
-                state = RecordingState.IDLE
-            )
-            scope.launch { _events.emit(RecordingEvent.AutoStopped(file)) }
+            val currentState = _recordingState.value.state
+            if (currentState != RecordingState.STOPPING) {
+                val sid = _recordingState.value.sessionId
+                _recordingState.value = _recordingState.value.copy(
+                    state = RecordingState.IDLE
+                )
+                scope.launch { _events.emit(RecordingEvent.AutoStopped(file, sid)) }
+            } else {
+                _recordingState.value = _recordingState.value.copy(
+                    state = RecordingState.IDLE
+                )
+            }
         }
         
         recorderHelper.onErrorListener = { error ->
+            val sid = _recordingState.value.sessionId
             _recordingState.value = _recordingState.value.copy(
                 error = error,
                 state = RecordingState.IDLE
             )
-            scope.launch { _events.emit(RecordingEvent.Error(error)) }
+            scope.launch { _events.emit(RecordingEvent.Error(error, sid)) }
         }
     }
 
@@ -124,7 +133,8 @@ class RecordingController private constructor(context: Context) {
     }
 
     fun failRecording(errorMessage: String) {
-        scope.launch { _events.emit(RecordingEvent.Error(errorMessage)) }
+        val sid = _recordingState.value.sessionId
+        scope.launch { _events.emit(RecordingEvent.Error(errorMessage, sid)) }
         val file = recorderHelper.stopRecording()
         if (file != null && file.exists()) {
             file.delete()
