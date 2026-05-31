@@ -87,7 +87,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val polishedTranscript = MutableStateFlow("")
     val isMeetingActive = MutableStateFlow(false)
     val isRecordingVoiceQuestion = MutableStateFlow(false)
-    private var activeRecordingFile: File? = null
     private var activeRecordingSessionId: String? = null
     val isPolishingTranscript = MutableStateFlow(false)
 
@@ -113,20 +112,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Configure recorder listeners
-        controller.onAutoStoppedListener = { wavFile ->
-            viewModelScope.launch {
-                if (recordingStatus.value != RecordingStatus.SKIPPED) {
-                    handleCompletedRecording(wavFile)
+        viewModelScope.launch {
+            controller.events.collect { event ->
+                when (event) {
+                    is com.example.audio.RecordingEvent.AutoStopped -> {
+                        if (recordingStatus.value != RecordingStatus.SKIPPED) {
+                            handleCompletedRecording(event.file)
+                        }
+                    }
+                    is com.example.audio.RecordingEvent.Error -> {
+                        isRecordingAudio.value = false
+                        errorString.value = event.message
+                    }
+                    is com.example.audio.RecordingEvent.SilenceStopped -> {
+                        recordAutoStoppedDueToSilence.value = true
+                        isRecordingAudio.value = false
+                    }
                 }
             }
-        }
-        controller.onErrorListener = { errorMsg ->
-            isRecordingAudio.value = false
-            errorString.value = errorMsg
-        }
-        controller.onSilenceStopped = {
-            recordAutoStoppedDueToSilence.value = true
-            isRecordingAudio.value = false
         }
         
         viewModelScope.launch {
@@ -179,6 +182,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         if (sessionId == null) {
             errorString.value = "Please select or create a Session first."
+            return
+        }
+        
+        val currentSession = allSessions.value.find { it.id == sessionId }
+        if (currentSession?.apiProvider == "unconfigured") {
+            errorString.value = "Runtime config missing. Please fix configuration before chatting."
             return
         }
 
@@ -590,6 +599,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun sendVoiceQuestionMessage(transcript: String) {
         val sessionId = _activeSessionId.value ?: return
+        
+        val currentSession = allSessions.value.find { it.id == sessionId }
+        if (currentSession?.apiProvider == "unconfigured") {
+            errorString.value = "Runtime config missing. Please fix configuration before asking voice questions."
+            return
+        }
+        
         try {
             val activeSkills = allSkills.value.filter { it.selected || it.alwaysOn }
             val systemPrompt = if (activeSkills.isNotEmpty()) {

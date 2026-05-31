@@ -17,10 +17,9 @@ class LlmRouter(
             ProviderProtocol.GeminiGenerateContent -> {
                 val apiKey = if (provider.apiKey.isNotEmpty()) {
                     provider.apiKey
-                } else if (BuildConfig.DEBUG) {
-                    android.util.Log.w("LlmRouter", "WARNING: Falling back to BuildConfig.GEMINI_API_KEY. Config should provide the key.")
-                    BuildConfig.GEMINI_API_KEY
-                } else ""
+                } else {
+                    throw IllegalStateException("CredentialMissing: API Key is required for provider ${provider.id}")
+                }
                 GeminiAdapter(apiKey, mcpRepository)
             }
             ProviderProtocol.OpenAiChatCompletions,

@@ -64,8 +64,8 @@ To execute fast JUnit business-logic tests alongside JVM-based shadow framework 
 ./gradlew :app:testDebugUnitTest
 ```
 
-### C. Production Release Package (Release APK / Bundle)
-To generate a fully minimized, high-performance binary optimized and signed for Google Play distribution:
+### C. Release Build Command (Not for Production)
+To generate a release build for local testing and performance verification:
 1. Register signature keys inside `/app/build.gradle.kts` or `gradle.properties`.
 2. Clean existing caches (only as a last resort) and execute:
    ```bash
@@ -75,12 +75,13 @@ To generate a fully minimized, high-performance binary optimized and signed for 
    ```bash
    ./gradlew bundleRelease
    ```
+   *Note: This architecture is an engineering prototype. Do not publish these artifacts.*
 
 ---
 
-## 5. Instant Installation Guide (Direct APK Retrieval)
+## 5. Instant Installation Guide (Tester-Only Debug Build)
 
-If you are a tester, client, or end-user who does not wish to configure compiler environments locally, you can retrieve the compiled application package instantly from the cloud streaming emulator workspace:
+If you are a tester evaluating the debug prototype, you can retrieve the compiled application package instantly from the cloud streaming emulator workspace:
 
 1. Locate the **AI Studio Project Settings** or **Project Export Menu** on your workspace control panels.
 2. Direct your action to **Build APK** or **Download Build Outputs**.

@@ -69,10 +69,35 @@ class RecordingService : Service() {
             ACTION_STOP -> {
                 serviceScope.launch {
                     val controller = RecordingController.getInstance(this@RecordingService)
-                    if (controller.recordingState.value.state == RecordingState.MEETING || 
-                        controller.recordingState.value.state == RecordingState.QUICK_VOICE) {
+                    val currentState = controller.recordingState.value.state
+                    val sessionId = controller.recordingState.value.sessionId
+                    if (currentState == RecordingState.MEETING || currentState == RecordingState.QUICK_VOICE) {
                         val file = controller.stopAndFinalize()
-                        if (file != null) {
+                        if (file != null && sessionId != null) {
+                            val durationSecs = file.length() / (16000.0 * 2.0)
+                            val db = com.example.data.AppDatabase.getDatabase(this@RecordingService)
+                            val sessionEntity = db.recordingSessionDao().getRecordingSessionById(sessionId)
+                            if (sessionEntity != null) {
+                                db.recordingSessionDao().updateRecordingSession(
+                                    sessionEntity.copy(
+                                        status = "completed",
+                                        stopReason = "manual",
+                                        endedAt = System.currentTimeMillis(),
+                                        durationMs = (durationSecs * 1000).toLong(),
+                                        audioPath = file.absolutePath
+                                    )
+                                )
+                                val recording = com.example.data.RecordingEntity(
+                                    id = sessionId,
+                                    audioPath = file.absolutePath,
+                                    durationSeconds = durationSecs,
+                                    transcript = "{}", // To be updated by ViewModel if alive
+                                    createdAt = System.currentTimeMillis(),
+                                    error = null
+                                )
+                                db.recordingDao().insertRecording(recording)
+                            }
+                            
                             val broadcastIntent = Intent("com.example.audio.RECORDING_COMPLETED")
                             broadcastIntent.putExtra(EXTRA_FILE_PATH, file.absolutePath)
                             sendBroadcast(broadcastIntent)

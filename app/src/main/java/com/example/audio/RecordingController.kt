@@ -4,10 +4,18 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+
+// File level or companion object 
+sealed interface RecordingEvent {
+    data class AutoStopped(val file: File) : RecordingEvent
+    data class Error(val message: String) : RecordingEvent
+    object SilenceStopped : RecordingEvent
+}
 
 class RecordingController private constructor(context: Context) {
     private val recorderHelper = AudioRecorderHelper.getInstance(context)
@@ -17,17 +25,16 @@ class RecordingController private constructor(context: Context) {
     private val _recordingState = MutableStateFlow(RecordingStatus())
     val recordingState: StateFlow<RecordingStatus> = _recordingState.asStateFlow()
     
-    // We can bridge the callback from AudioRecorderHelper
-    var onAutoStoppedListener: ((File) -> Unit)? = null
-    var onErrorListener: ((String) -> Unit)? = null
-    var onSilenceStopped: (() -> Unit)? = null
+    // Events
+    private val _events = kotlinx.coroutines.flow.MutableSharedFlow<RecordingEvent>()
+    val events = _events.asSharedFlow()
 
     init {
         recorderHelper.onAutoStoppedListener = { file ->
             _recordingState.value = _recordingState.value.copy(
                 state = RecordingState.IDLE
             )
-            onAutoStoppedListener?.invoke(file)
+            scope.launch { _events.emit(RecordingEvent.AutoStopped(file)) }
         }
         
         recorderHelper.onErrorListener = { error ->
@@ -35,7 +42,7 @@ class RecordingController private constructor(context: Context) {
                 error = error,
                 state = RecordingState.IDLE
             )
-            onErrorListener?.invoke(error)
+            scope.launch { _events.emit(RecordingEvent.Error(error)) }
         }
     }
 
@@ -91,7 +98,7 @@ class RecordingController private constructor(context: Context) {
                     
                     if (!recorderHelper.isRecording && recorderHelper.durationMs > 0) {
                         _recordingState.value = _recordingState.value.copy(state = RecordingState.IDLE)
-                        onSilenceStopped?.invoke()
+                        _events.emit(RecordingEvent.SilenceStopped)
                         break
                     }
                     kotlinx.coroutines.delay(100)

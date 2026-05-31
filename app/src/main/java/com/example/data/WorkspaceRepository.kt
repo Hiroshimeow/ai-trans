@@ -102,14 +102,20 @@ class WorkspaceRepository(
         
         // Snapshot active settings from RuntimeConfig
         val runtimeConfigRepo = com.example.data.RuntimeConfigRepository(context)
-        val config = try { runtimeConfigRepo.loadConfig() } catch (e: Exception) { null }
+        var configError: String? = null
+        val config = try { 
+            runtimeConfigRepo.loadConfig() 
+        } catch (e: Exception) { 
+            configError = "ConfigError: ${e.message}"
+            null 
+        }
         val activeId = config?.providers?.defaultProviderId
         val pItem = config?.providers?.items?.find { it.id == activeId }
         
         val endpoint = pItem?.endpoint ?: ""
         val model = pItem?.models?.chat ?: ""
-        val provider = pItem?.id ?: activeId ?: "unknown"
-        val apiKeyAlias = pItem?.apiKeyAlias ?: ""
+        val provider = pItem?.id ?: activeId ?: (if (configError != null) "unconfigured" else "unknown")
+        val apiKeyAlias = pItem?.apiKeyAlias ?: configError ?: ""
         val maxTokens = 4096
 
         val session = SessionEntity(
