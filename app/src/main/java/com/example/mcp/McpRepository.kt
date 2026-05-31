@@ -144,8 +144,18 @@ class McpRepository(
 
         if (isDestructive) {
             var current = toolCallDao.getToolCallById(callId)
+            var elapsed = 0
             while (current != null && current.status == "pending_approval") {
+                if (elapsed >= 60000) {
+                    toolCallDao.updateToolCall(current.copy(
+                        status = "failed",
+                        errorCode = "ToolApprovalTimeout",
+                        resultSummary = "Tool approval timed out after 60 seconds."
+                    ))
+                    throw Exception("ToolApprovalTimeout: User did not approve the destructive tool call in time.")
+                }
                 kotlinx.coroutines.delay(1000)
+                elapsed += 1000
                 current = toolCallDao.getToolCallById(callId)
             }
             if (current == null) {

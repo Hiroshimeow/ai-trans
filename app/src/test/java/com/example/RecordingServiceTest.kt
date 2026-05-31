@@ -85,14 +85,10 @@ class RecordingServiceTest {
         // 3. Verify DB update
         // Poll for completion because of IO dispatchers in the background
         var updatedSession: com.example.data.RecordingSessionEntity? = null
-        kotlinx.coroutines.withTimeout(5000) {
-            while(true) {
-                updatedSession = appDatabase.recordingSessionDao().getRecordingSessionById(sessionId)
-                if (updatedSession?.status == "completed") {
-                    break
-                }
-                kotlinx.coroutines.delay(100)
-            }
+        for (i in 0..50) {
+            updatedSession = appDatabase.recordingSessionDao().getRecordingSessionById(sessionId)
+            if (updatedSession?.status == "completed") break
+            Thread.sleep(100)
         }
         
         assertNotNull(updatedSession)

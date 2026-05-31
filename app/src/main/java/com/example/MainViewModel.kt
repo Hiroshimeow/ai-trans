@@ -439,14 +439,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isRecordingVoiceQuestion.value = false
         
         val serviceIntent = android.content.Intent(context, RecordingService::class.java).apply {
-            action = RecordingService.ACTION_STOP
+            action = RecordingService.ACTION_CANCEL
         }
         context.startService(serviceIntent)
         
         viewModelScope.launch {
             localSpeechHelper?.stopListening()
             localSpeechHelper = null
-            controller.cancelRecording()
         }
     }
 

@@ -23,6 +23,7 @@ class RecordingService : Service() {
     companion object {
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
+        const val ACTION_CANCEL = "ACTION_CANCEL"
         const val ACTION_RECORDING_STARTED = "com.example.audio.RECORDING_STARTED"
         const val ACTION_RECORDING_COMPLETED = "com.example.audio.RECORDING_COMPLETED"
         const val EXTRA_FILE_PATH = "EXTRA_FILE_PATH"
@@ -136,35 +137,47 @@ class RecordingService : Service() {
                     val controller = RecordingController.getInstance(this@RecordingService)
                     val currentState = controller.recordingState.value.state
                     val sessionId = controller.recordingState.value.sessionId
+                    val durationMs = controller.recordingState.value.durationMs
+                    
                     if (currentState == RecordingState.MEETING || currentState == RecordingState.QUICK_VOICE) {
                         val file = controller.stopAndFinalize()
                         if (file != null && sessionId != null) {
-                            val durationSecs = file.length() / (16000.0 * 2.0)
+                            val durationSecs = if (durationMs > 0) durationMs / 1000.0 else file.length() / (16000.0 * 2.0)
+                            val finalDurationMs = if (durationMs > 0) durationMs else (durationSecs * 1000).toLong()
+                            
                             val db = com.example.data.AppDatabase.getDatabase(this@RecordingService)
                             val sessionEntity = db.recordingSessionDao().getRecordingSessionById(sessionId)
                             if (sessionEntity != null) {
+                                val transcriptText = db.transcriptSegmentDao()
+                                    .getSegmentsForSessionSync(sessionId)
+                                    .filter { it.isFinal }
+                                    .sortedBy { it.index }
+                                    .joinToString("\n") { it.text }
+
                                 db.recordingSessionDao().updateRecordingSession(
                                     sessionEntity.copy(
                                         status = "completed",
                                         stopReason = "manual",
                                         endedAt = System.currentTimeMillis(),
-                                        durationMs = (durationSecs * 1000).toLong(),
-                                        audioPath = file.absolutePath
+                                        durationMs = finalDurationMs,
+                                        audioPath = file.absolutePath,
+                                        finalTranscript = transcriptText.ifBlank { sessionEntity.finalTranscript }
                                     )
                                 )
                                 val recording = com.example.data.RecordingEntity(
                                     id = sessionId,
                                     audioPath = file.absolutePath,
                                     durationSeconds = durationSecs,
-                                    transcript = "{}", // To be updated by ViewModel if alive
+                                    transcript = transcriptText.ifBlank { "" },
                                     createdAt = System.currentTimeMillis(),
                                     error = null
                                 )
                                 db.recordingDao().insertRecording(recording)
                             }
                             
-                            val broadcastIntent = Intent("com.example.audio.RECORDING_COMPLETED")
+                            val broadcastIntent = Intent(ACTION_RECORDING_COMPLETED)
                             broadcastIntent.putExtra(EXTRA_FILE_PATH, file.absolutePath)
+                            broadcastIntent.putExtra("EXTRA_SESSION_ID", sessionId)
                             sendBroadcast(broadcastIntent)
                         }
                     }
@@ -172,6 +185,12 @@ class RecordingService : Service() {
                     stopSelf()
                 }
                 isServiceRunning = false
+            }
+            ACTION_CANCEL -> {
+                RecordingController.getInstance(this@RecordingService).cancelRecording()
+                isServiceRunning = false
+                stopForeground(true)
+                stopSelf()
             }
         }
         return START_NOT_STICKY
