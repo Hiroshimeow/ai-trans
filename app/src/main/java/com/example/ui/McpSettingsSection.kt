@@ -33,7 +33,7 @@ fun McpSettingsSection(viewModel: MainViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .background(Color(0xFF1B1B1F), RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
         Text("MCP Tool Gateway", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = GlowCyan)
@@ -125,13 +125,13 @@ fun McpServerRow(
             .border(1.dp, BorderSlate, RoundedCornerShape(6.dp))
             .padding(10.dp)
     ) {
-        Text(server.name, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+        Text(server.name, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
         Text(server.endpointUrl, color = SlateTextSecondary, fontSize = 11.sp)
         
         if (server.lastError != null) {
-            Text("Error: \${server.lastError}", color = Color.Red, fontSize = 10.sp)
+            Text("Error: ${server.lastError}", color = Color.Red, fontSize = 10.sp)
         } else if (server.lastConnectedAt != null) {
-            Text("Active & Connected: \${tools.size} tools", color = Color.Green, fontSize = 10.sp)
+            Text("Active & Connected: ${tools.size} tools", color = Color.Green, fontSize = 10.sp)
         }
 
         if (tools.isNotEmpty()) {
@@ -142,7 +142,7 @@ fun McpServerRow(
                     .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
                     .padding(8.dp)
             ) {
-                Text("Available Tools:", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Available Tools:", color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 tools.forEach { tool ->
                     Row(
@@ -151,7 +151,7 @@ fun McpServerRow(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(tool.name, color = if (tool.enabled) Color.White else SlateTextSecondary, fontSize = 11.sp, textDecoration = if (tool.enabled) null else androidx.compose.ui.text.style.TextDecoration.LineThrough)
+                            Text(tool.name, color = if (tool.enabled) MaterialTheme.colorScheme.onSurface else SlateTextSecondary, fontSize = 11.sp, textDecoration = if (tool.enabled) null else androidx.compose.ui.text.style.TextDecoration.LineThrough)
                             if (tool.errorMessage != null) {
                                 Text(tool.errorMessage, color = Color.Red, fontSize = 9.sp)
                             }

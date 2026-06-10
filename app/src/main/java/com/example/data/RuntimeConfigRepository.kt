@@ -93,7 +93,10 @@ class RuntimeConfigRepository(private val context: Context) {
     fun loadConfig(): RuntimeConfig {
         val customFile = File(context.getExternalFilesDir(null), "stc.json")
         if (!customFile.exists()) {
-            throw ConfigIssueException("ConfigMissing: stc.json file not found at ${customFile.absolutePath}")
+            val defaultConfig = RuntimeConfig()
+            val json = adapter.indent("  ").toJson(defaultConfig)
+            customFile.writeText(json)
+            return defaultConfig
         }
         
         return try {

@@ -56,13 +56,6 @@ import java.util.*
 // ==========================================
 @Composable
 fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
-    val sttChoices = listOf(
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro"
-    )
-
     var cModel by remember { mutableStateOf(viewModel.settingsManager.chatModel) }
     var sModel by remember { mutableStateOf(viewModel.settingsManager.sttModel) }
     var fsModel by remember { mutableStateOf(viewModel.settingsManager.fallbackSttModel) }
@@ -164,8 +157,8 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
-                Text("Primary STT Transcription Model", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
-                sttChoices.forEach { s ->
+                Text("Primary STT Transcription Model (${modelChoices.size} options)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                modelChoices.forEach { s ->
                     val isSelected = sModel == s
                     Row(
                         modifier = Modifier
@@ -180,7 +173,7 @@ fun SettingsDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                     ) {
                         RadioButton(selected = isSelected, onClick = { sModel = s }, colors = RadioButtonDefaults.colors(selectedColor = GlowCyan))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(s, fontSize = 11.sp, color = Color(0xFF1B1B1F), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(s, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
 
